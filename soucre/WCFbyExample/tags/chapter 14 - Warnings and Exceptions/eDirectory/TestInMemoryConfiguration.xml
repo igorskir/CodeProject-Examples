@@ -1,0 +1,80 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  InMemory Configuration
+  ======================
+-->
+  <objects xmlns="http://www.springframework.net">
+
+    <!-- CLIENT SERVICE LOCATOR -->
+    <object 
+            id="ClientServiceLocatorRef" 
+            type="eDirectory.WPF.Services.ClientServiceLocator, eDirectory.WPF"  
+            factory-method="Instance" 
+            singleton="true">
+      
+      <property name="ContractLocator" ref="ClientContractLocatorRef" />
+      <property name="ExceptionManager" ref="BusinessExceptionManagerRef" />
+      <property name="WarningManager" ref="BusinessWarningManagerRef" />
+      
+    </object>
+    
+    <!-- Client Contract Locator -->
+    <object 
+            id="ClientContractLocatorRef" 
+            type="eDirectory.WPF.Services.ClientContractLocator, eDirectory.WPF">            
+      
+      <property name="NextAdapterLocator" ref="ContractLocatorRef" />
+    </object>
+
+    <!-- Business Exception Manager -->
+    <object
+            id="BusinessExceptionManagerRef"
+            type=" eDirectory.UnitTests.Core.TestBusinessExceptionManager"/>
+
+    <!-- Business Warning Manager -->
+    <object
+            id="BusinessWarningManagerRef"
+            type=" eDirectory.UnitTests.Core.TestBusinessWarningManager"/>
+
+    <!-- Next Adapter Locator -->
+    <object
+            id="ContractLocatorRef"
+            type="eDirectory.Domain.Services.ServerContractLocator, eDirectory.Domain" />
+
+
+    <!-- SERVER CONTAINER -->
+    <object
+        id="ServerContainerRef"
+        type="eDirectory.Domain.AppServices.Container, eDirectory.Domain"
+        singleton="true">
+
+      <property name="RequestContext" ref="RequestContextRef" />
+    </object>
+
+    <!-- Request Context -->
+    <object
+            id="RequestContextRef"
+            type="eDirectory.Naive.AppServices.RequestContextNaive, eDirectory.Naive" />
+    
+    <!-- Global Context -->
+    <object
+            id="GlobalContextRef"
+            type="eDirectory.Domain.AppServices.GlobalContext, eDirectory.Domain"
+            factory-method="Instance"
+            singleton="true">
+
+      <property name="TransFactory" ref="TransFactoryRef" />
+    </object>
+
+    <!-- Transaction Factory -->
+    <object
+            id="TransFactoryRef"
+            type="eDirectory.Naive.TransManager.TransManagerFactoryInMemory, eDirectory.Naive" />
+    
+    <!-- AutoMapper -->
+    <object
+            id="AutoMapperConfiguratorRef"
+            type="eDirectory.Domain.Entities.AutoMapperConfigurator, eDirectory.Domain"
+            init-method="Install" />
+       
+  </objects>

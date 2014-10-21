@@ -1,0 +1,419 @@
+﻿
+<table width="100%" border="0">
+<tbody>
+<tr>
+<td width="33%" align="left"><a href="wcfbyexample_chapter10.aspx"><img border="0" complete="true" src="wcfbyexample_introduction/previous.gif" alt="Previous" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td width="33%" align="left">Chapter X</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a href="wcfbyexample_introduction.aspx" title="WCF by Example - Introduction">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+<h2>Chapter overview</h2>
+<p>In chapter X we discussed how dependency injection leverages our design providing an easy mechanism for changing our back-end implementation; we also demonstrated how to configure the application to use the in-memory persistence implementation. Working using the in-memory implementation is very productive, it helps to focus in the object modeling and leaves the heavy and expensive stuff of integrating the application to the back-end database for a later 
+    phase when the model is probably at a more stable stage. This approach could derive on having two major phases before the UAT: object modeling and integration (to the back-end database). However, it provides some benefits to have someone looking at the NHibernate implementation at a earlier stage if feasible, sometimes it could be found that model changes are require when entities are 
+    tried to be persisted to the database. In this process, a good set of tests that can be executed using both implementations is key to ensure a easy transaction.</p>
+<p>In this chapter we introduce the NHibernate implementation to the eDirectory 
+    solution. Although few steps will be required, we expect to show how easily the new components integrate with our existing solution 
+    and how from the client application's point of view the change from the in-memory to 
+    the NHibernate mode is transparent. In the bellow diagram we can observe that 
+    the only difference with the in-memory mode is where the TransFactory 
+    implementation used is a new NHibernate component. It is worth noting that we 
+    keep executing the application in one single process:</p>
+<img src="wcfbyexample_chapter11a/eDirectory_nhibernate.png" />
+<h2>Setting Up the back-end Database</h2>
+<p>Before we can continue we need to configure a database instance for the eDirectory solution. 
+    In this example we are using SQL Server but you could try with Oracle, MySQL oe even SQLite 
+    databases. We are expecting you to have SQL Express installed but you will find that the NHibernate configuration file provided in this chapter works well on SQL Server 2005/2008 server instances.</p>
+<p>You need to create a database named: eDirectory, you could create it within Visual Studio following the next steps:</p>
+<p>1 - In the Server Explorer select create new database option:</p>
+<img src="wcfbyexample_chapter11a/server_explorer_create_db.png" />
+<p>2 - The local instance in our example was named SQLEXPRESS, we are using Windows Authentication and we named the database eDirectory:</p>
+<img src="wcfbyexample_chapter11a/database_details.png" />
+<h2>Customer Configuration Mapping File</h2>
+<p>For each entity (<code>Customer</code> class in our solution) we need to define a NHibernate mapping between the class and the database back-end. In the eDirectory solution we are going to use XML configuration files but we could have used NFluent declarations instead.</p>
+<p>In the Domain project we have added a Mappings folder and then the <code>Customer.hbm.xml</code> was added. This is a NHibernate configuration file, you may want to specify the NHibernate schema file definition so intellinse is available:</p>
+<img src="wcfbyexample_chapter11a/nhibernate_schema.png" />
+<p>One small detail about the XML file is that it needs to be set as an embedded resource so the NHibernate configuration helper can find it within the assembly at run time:</p>
+<img src="wcfbyexample_chapter11a/xml_embedded.png" />
+<p>In first place we declare the header section with the assembly and namespace details of the <code>Customer</code> class:</p>
+<img src="wcfbyexample_chapter11a/config_header_section.png" />
+<p>In the body section we declare the mapping for the <code>Customer</code> class:</p>
+<img src="wcfbyexample_chapter11a/config_body_section.png" />
+<p>It is worth noting how the <code>Id</code> property is declared, we indicate that a SQL Identity field is used for this field and if the value of the class property is cero, it indicates to NHibernate that the instance has not been persisted. The other three fields are self-explained.</p>
+<h2>eDirectory.NHibernate Project</h2>
+<p>We need a new project for the NHibernate implementation, we will declare five new classes in this project. Firstly, besides adding references to eDirectory.Common and eDirectory.Domain, we also need references to the NHibernate and NHibernate.Linq assemblies.</p>
+<p>We need to implement the same sort of classes that we have in the in-memory eDirectory.Naive assembly:</p>
+<img src="wcfbyexample_chapter11a/inmemory_implementations.png" />
+<p>The Repository implementation for NHibernate is simpler that the in-memory one, that might be a surprise for some people:</p>
+<pre lang="cs">namespace eDirectory.NHibernate.Repository
+{
+    public class RepositoryNh&lt;TEntity&gt;
+        : IRepository&lt;TEntity&gt;
+    {
+
+        private readonly ISession SessionInstance;
+
+        public RepositoryNh(ISession session)
+        {
+            SessionInstance = session;
+        }
+
+        #region Implementation of IRepository&lt;TEntity&gt;
+
+        public TEntity Save(TEntity instance)
+        {
+            SessionInstance.Save(instance);
+            return instance;
+        }
+
+        public void Update(TEntity instance)
+        {
+            SessionInstance.Update(instance);
+        }
+
+        public void Remove(TEntity instance)
+        {
+            SessionInstance.Delete(instance);
+        }
+
+        public TEntity GetById(long id)
+        {
+            return SessionInstance.Get&lt;TEntity&gt;(id);
+        }
+
+        public IQueryable&lt;TEntity&gt; FindAll()
+        {
+            return SessionInstance.Linq&lt;TEntity&gt;();
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>The two most important aspects of the above implementations is how <code>Session</code> resolves all our method implementations and the use of the generic <code>Linq</code> extension method at the <code>FindAll</code> method. This little piece of code provides a great flexibility for executing queries without creating dedicated repository methods. It is a little beauty.</p>
+<p>Then we have the implementation of the RepositoryLocator; the purpose of this class is the management of repositories and helping to find 
+    an instance of a repository for a given entity. What we have done is pushing up to the base class some functionality that we defined in the in-memory implementation that can be re-used with the NHibernate one. In this way the new class is quite simple:</p>
+<pre lang="cs">namespace eDirectory.NHibernate.Repository
+{
+    public class RepositoryLocatorNh
+        :RepositoryLocatorBase
+    {
+        private readonly ISession SessionInstance;
+
+        public RepositoryLocatorNh(ISession session)
+        {
+            SessionInstance = session;
+        }
+        
+        #region Overrides of RepositoryLocatorBase
+
+        protected override IRepository&lt;T&gt; CreateRepository&lt;T&gt;()
+        {
+            return new RepositoryNh&lt;T&gt;(SessionInstance);
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>The <code>TransManager</code> implementation is a little more complex but maybe the most important aspect is the <code>Session</code> instance that needs to be passed when a new instance of the manager is created. This implementation manages transactions, not like the in-memory implementation:</p>
+<pre lang="cs">namespace eDirectory.NHibernate.TransManager
+{
+    public class TransManagerNh
+        :TransManagerBase
+    {
+        private readonly ISession SessionInstance;
+
+        public TransManagerNh(ISession session)
+        {
+            SessionInstance = session;
+            Locator = new RepositoryLocatorNh(SessionInstance);
+        }
+
+        #region Overriden Base Methods
+
+        public override void BeginTransaction()
+        {
+            base.BeginTransaction();
+            if (SessionInstance.Transaction.IsActive) return;
+            SessionInstance.BeginTransaction();
+        }
+
+        public override void CommitTransaction()
+        {
+            base.CommitTransaction();
+            if (!SessionInstance.Transaction.IsActive) return;
+            SessionInstance.Transaction.Commit();
+        }
+
+        public override void Rollback()
+        {
+            base.Rollback();
+            if (!SessionInstance.Transaction.IsActive) return;
+            SessionInstance.Transaction.Rollback();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (!disposing) return;
+            // free managed resources
+            if (!IsDisposed &amp;&amp; IsInTranx)
+            {
+                Rollback();
+            }
+            Close();
+            Locator = null;
+            IsDisposed = true;
+        }
+        
+        private void Close()
+        {
+            if (SessionInstance == null) return;
+            if (!SessionInstance.IsOpen) return;
+            SessionInstance.Close();
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>The last implementation is the <code>Factory</code> but before we cover it we need to introduce a class that manages some infrastructure aspects of NHibernate, one is the configuration settings and the other is the schema exporter helper class. The <code>NhBootStrapper</code> class contains two properties:</p>
+<pre lang="cs">namespace eDirectory.NHibernate.BootStrapper
+{
+    public class NhBootStrapper
+    {
+        private Configuration NhConfigurationInstance;
+
+        public Configuration NhConfiguration
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(ConfigurationFileName)) throw new ArgumentException(&quot;ConfigurationFileName property was blank&quot;);
+                NhConfigurationInstance = new Configuration();
+                NhConfigurationInstance.Configure(ConfigurationFileName);
+                NhConfigurationInstance.AddAssembly(typeof(Customer).Assembly);
+                return NhConfigurationInstance;
+            }
+        }
+
+
+        private SchemaExport eDirectorySchemaExportInstance;
+
+        public SchemaExport eDirectorySchemaExport
+        {
+            get
+            {
+                if (eDirectorySchemaExportInstance != null) return eDirectorySchemaExportInstance;
+                eDirectorySchemaExportInstance = new SchemaExport(NhConfiguration);
+                return eDirectorySchemaExportInstance;
+            }
+        }
+
+
+        public string ConfigurationFileName { get; set; }
+    }
+}
+</pre>
+<p>We need to set the <code>ConfigurationFileName</code> property before the <code>NhConfiguration</code> can be invoked. Calling this property for the first time a NHIbernate configuration class instance is created from the given file and mappings declared at the eDirectory.Domain assembly are also declared.</p>
+<p>The <code>eDirectorySchemaExport</code> is not intended to be used by eDirectory production applications, it is there 
+    to help re-generating the eDirectory database schema by an auxiliary applications like tests or a console application responsible for the creation of the database schema.</p>
+<p>The implementation of the factory class is as follows:</p>
+<pre lang="cs">namespace eDirectory.NHibernate.TransManager
+{
+    public class TransManagerFactoryNh
+        : ITransFactory
+    {
+
+        private ISessionFactory SessionFactoryInstance;
+
+        private ISessionFactory SessionFactory
+        {
+            get
+            {
+                if (SessionFactoryInstance != null) return SessionFactoryInstance;
+                SessionFactoryInstance = InitializeSessionFactory();
+                return SessionFactoryInstance;
+            }
+        }
+
+        #region Implementation of ITransFactory
+
+        public ITransManager CreateManager()
+        {
+            return new TransManagerNh(SessionFactory.OpenSession());
+        }
+
+        #endregion
+
+        #region Properties
+
+        public string ConfigurationFileName { get; set; }
+
+        #endregion
+
+        #region Session Factory Initializer
+
+        private ISessionFactory InitializeSessionFactory()
+        {
+            var nhConfiguration = new NhBootStrapper {ConfigurationFileName = this.ConfigurationFileName};
+            return nhConfiguration.NhConfiguration.BuildSessionFactory();
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>The <code>CreateManager</code> method is responsible for passing a <code>Session</code> instance to the <code>Transaction Manager</code>, which this one uses to create an instance of the <code>RepositoryLocator</code>. <code>Session</code> instances are generated from the NHibernate <code>SessionFactory</code> that is created using the mentioned <code>NhBootStrapper</code> class. The <code>ConfigurationFileName</code> property is available so it can be &quot;injected&quot; using dependency injection, we will see later how the client uses it.</p>
+<h2>Client Changes</h2>
+<p>This is the most interesting aspect of the NHibernate implementation, the only thing we need to get the client to work using NHibernate and persisting data to the database is a new Spring.Net configuration file, it does not even need to change a line of code. Isn't it good?</p>
+<p>The new configuration file is named <code>NhConfiguration.xml</code>, if we compare the new file to the in-memory version, the only change is in the definition of the <code>TransFactory</code> reference:</p>
+<img src="wcfbyexample_chapter11a/comparation_di_files.png" />
+<p>It is in this section where we also declare the configuration file name:</p>
+<pre lang="xml">    &lt;!-- Transaction Factory --&gt;
+    &lt;object
+            id=&quot;TransFactoryRef&quot;
+            type=&quot;eDirectory.NHibernate.TransManager.TransManagerFactoryNh, eDirectory.NHibernate&quot;&gt;
+      
+      &lt;property name=&quot;ConfigurationFileName&quot; value=&quot;nhibernate.cfg.xml&quot; /&gt;
+    &lt;/object&gt;
+</pre>
+<h2>NHibernate Configuration File</h2>
+<p>We will just cover the basic aspects of the configuration file, you may want to check the reference documentation for a comprehensive description of each of the configuration settings:</p>
+<pre lang="xml">&lt;hibernate-configuration  xmlns=&quot;urn:nhibernate-configuration-2.2&quot; &gt;
+	&lt;session-factory name=&quot;NHibernate.Test&quot;&gt;
+		&lt;property name=&quot;connection.provider&quot;&gt;NHibernate.Connection.DriverConnectionProvider&lt;/property&gt;
+		&lt;property name=&quot;dialect&quot;&gt;NHibernate.Dialect.MsSql2005Dialect&lt;/property&gt;
+		&lt;property name=&quot;connection.driver_class&quot;&gt;NHibernate.Driver.SqlClientDriver&lt;/property&gt;
+		&lt;property name=&quot;connection.connection_string&quot;&gt;Server=.\SQLEXPRESS;Database=eDirectory;Integrated Security=SSPI;&lt;/property&gt;
+
+		&lt;property name=&quot;show_sql&quot;&gt;false&lt;/property&gt;
+		&lt;property name=&quot;proxyfactory.factory_class&quot;&gt;NHibernate.ByteCode.Castle.ProxyFactoryFactory, NHibernate.ByteCode.Castle&lt;/property&gt;
+		&lt;property name=&quot;hbm2ddl.keywords&quot;&gt;none&lt;/property&gt;
+		&lt;property name=&quot;cache.use_second_level_cache&quot;&gt;true&lt;/property&gt;
+		&lt;property name=&quot;cache.use_query_cache&quot; &gt;true&lt;/property&gt;
+		&lt;property name=&quot;cache.provider_class&quot;&gt;NHibernate.Cache.HashtableCacheProvider&lt;/property&gt;
+	&lt;/session-factory&gt;
+&lt;/hibernate-configuration&gt;
+</pre>
+<p>You may need to change the connection_string if your SQL Server instance name is different to the default SQL Server Express name; also, you may want to enable <code>show_sql</code> to see the SQL statements, unfortunately this only works running tests or 
+    in Console applications.</p>
+<h2>Console Application - Generate Schema</h2>
+<p>At this stage, we are almost ready to run the client. We created a new configuration setting in our solution to ensure that the correct assemblies are deployed on the client folder:</p>
+<img src="wcfbyexample_chapter11a/NHibernate_configuration.png" />
+<p>We also changed the client <code>app.config</code> so the application now uses the NHibernate configuration:</p>
+<pre lang="xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+    &lt;add key=&quot;SpringConfigFile&quot; value=&quot;file://NhConfiguration.xml&quot; /&gt;
+  &lt;/appSettings&gt;
+&lt;/configuration&gt;
+</pre>
+<p>However, if we try to execute the application at this point, the following exception is thrown:</p>
+<img src="wcfbyexample_chapter11a/exception.png" />
+<p>If we examine the internal exception we find the following description <code>{&quot;Invalid object name 'Customer'.&quot;}</code> which means that the Customer table does not exist. We need some mechanism to generate our schema, we could do 
+    it by hand but luckily NHibernate is capable of generating the database schema from our mapping definitions which proves to be a good approach in new projects 
+    where the database is created from scratch.</p>
+<p>In eDirectory we are providing a Console application that generates the schema, it is called: <code>eDirectory.Console</code>, it is currently a very basic application, it consists of a single method and few lines. Besides, it does a lot of magic for us:</p>
+<pre lang="cs">    class Program
+    {
+        static void Main(string[] args)
+        {
+            var nhBootStrapper = new NhBootStrapper
+                                     {
+                                         ConfigurationFileName = @&quot;nhibernate.cfg.xml&quot;
+                                     };
+
+            var connString = nhBootStrapper.NhConfiguration.GetProperty(&quot;connection.connection_string&quot;);
+            System.Console.WriteLine(&quot;Updating database schema for: &quot; + connString);
+            nhBootStrapper.eDirectorySchemaExport.Create(true, true);
+        }
+    }
+</pre>
+<p>The console application can easily be converted in just another type of client, 
+    in line to the WPF or the tests projects. 
+    For example, in a recent project we used this approach so a Console application 
+    was responsible for the migration of data from a legacy database into the new one using the entities and their persistence functionality.</p>
+<p>If the Console application is executed the following SQL statement is invoked:</p>
+<pre lang="sql">Updating database schema for: Server=.\SQLEXPRESS;Database=eDirectory;Integrated Security=SSPI;
+
+    if exists (select * from dbo.sysobjects where id = object_id(N'Customer') and OBJECTPROPERTY(id, N'IsUserTable') = 1) drop table Customer
+
+    create table Customer (
+       Id BIGINT IDENTITY NOT NULL,
+       FirstName NVARCHAR(50) not null,
+       LastName NVARCHAR(50) not null,
+       Telephone NVARCHAR(20) not null,
+       primary key (Id)
+    )
+</pre>
+<p>Not too bad. Lets try to execute our client once more enabling the <code>show_sql</code> setting at the NHibernate configuration file. If we create a record for &quot;Joe Bloggs&quot; we can observe that the following statements were executed in our new database:</p>
+<pre lang="txt">NHibernate: INSERT INTO Customer (FirstName, LastName, Telephone) VALUES (@p0, @p1, @p2); select SCOPE_IDENTITY();@p0 = 'Joe', @p1 = 'Bloggs', @p2 = '9999-8888'
+NHibernate: SELECT this_.Id as Id0_0_, this_.FirstName as FirstName0_0_, this_.LastName as LastName0_0_, this_.Telephone as Telephone0_0_ FROM Customer this_
+</pre>
+<p>You may want to open the database to check that the record was effectively created:</p>
+<img src="wcfbyexample_chapter11a/customer_table.png" />
+<h2>Tests Re-Factor</h2>
+<p>We have created few tests so far using the in-memory mode and in many projects this would be sufficient; although in 
+    some projects end-to-end tests are also created to ensure that functionality is correct when using a database; 
+    but invoking tests against a database could be somehow expensive in many 
+    different ways. In our eDirectory solution we are in a position to demonstrate how is possible having the same test running against the in-memory and NHibernate modes.</p>
+<p>There are couple aspects that require a little more effort when dealing with a database 
+    and tests, the first one is the re-creation of the data before the test can start, the second is the tear-down of all the changes before the next test can be executed. There are different approaches to this problem but in the eDirectory 
+    application we are going to propose one simple solution: every test will re-create the whole database from scratch. This could be taken 
+    by some as a horrible solution to our problem but it is simple and works well; it may just not perform that well.</p>
+<p>What we propose is a development methodology where developers create and execute the tests in the in-memory mode, then a Continuous Integration server could be in charge of executing the same tests against a database.</p>
+<p>There are few things to add to our test project to get it working with NHibernate. In first place we need to add few references and the same configuration files that were added to the client project. We also need a reference to the new <code>eDirectory.NHibernate</code> project. Then we need to modify the <code>app.config</code> to indicate that we are using the NHibernate configuration. For those like me that use ReSharper they may notice that some additional work is required to ensure that configuration files are deployed to the correct location where the MS tests are executed.</p>
+<p>The key is to ensure that tests are not changed because we are running in-memory or NHibernate mode; the <code>eDirectoryTestBase</code>base class can provide exactly what we need, we just need to add a new method that ensures the database is created at the start of each test:</p>
+<pre lang="cs">namespace eDirectory.UnitTests
+{
+    [TestClass]
+    [DeploymentItem(&quot;nhibernate.cfg.xml&quot;)]
+    public abstract class eDirectoryTestBase
+    {
+        [TestInitialize]
+        public virtual void TestsInitialize()
+        {
+            InitialiseDatabase();
+        }
+
+        private static void InitialiseDatabase()
+        {
+            var nHFactory = GlobalContext.Instance().TransFactory as TransManagerFactoryNh;
+            if (nHFactory == null) return;
+            var nhBootStrapper = new NhBootStrapper {ConfigurationFileName = nHFactory.ConfigurationFileName};
+            nhBootStrapper.eDirectorySchemaExport.Create(false, true);
+        }
+
+        [TestCleanup]
+        public virtual void TestCleanUp()
+        {
+            ResetLocator();
+        }
+
+        private static void ResetLocator()
+        {            
+            ...
+        }
+    }
+}
+</pre>
+<p>The <code>InitialiseDatabase</code> checks if the tests are executed in the NHibernate mode, if they do then the <code>eDirectorySchemaExport</code> is used to re-generate the database schema at the start of the test. It can be see that the tests take a little longer time but having them to be executed against the database is worthy:</p>
+<img src="wcfbyexample_chapter11a/tests.png" />
+<p>If we set the <code>show_sql</code> option enable we can retrieved the SQL statements executed in each test; for example, the following statements are executed when the <code>UpdateCustomer</code> test is executed:</p>
+<pre lang="txt">CustomerServiceTests.UpdateCustomer : Passed
+
+NHibernate: INSERT INTO Customer (FirstName, LastName, Telephone) VALUES (@p0, @p1, @p2); select SCOPE_IDENTITY();@p0 = 'Joe', @p1 = 'Bloggs', @p2 = '9999-8888'
+NHibernate: SELECT customer0_.Id as Id1_0_, customer0_.FirstName as FirstName1_0_, customer0_.LastName as LastName1_0_, customer0_.Telephone as Telephone1_0_ FROM Customer customer0_ WHERE customer0_.Id=@p0;@p0 = 1
+NHibernate: UPDATE Customer SET FirstName = @p0, LastName = @p1, Telephone = @p2 WHERE Id = @p3;@p0 = 'Joe', @p1 = 'Bloggs', @p2 = '8888-8888', @p3 = 1
+</pre>
+<h2>Chapter Summary</h2>
+<p>In this chapter we have demonstrated how NHibernate can be easily integrated to the eDirectory solution using the dependency injection functionality that was introduced in the previous chapter. We had not changed one line of code in the client to get the application working with a database. We also explained how to leverage the NHibernate functionality to create our schema from our Domain mappings, and we also discussed how to enhance our in-memory tests so they can be executed against a database without changes.</p>
+<p>We may have not covered any complex scenarios of persistence for inheritance, parent-child or many-to-many relationships; but we hoped we demonstrated how relatively easy is to integrate the solution components to a database using NHibernate. The Repository, RepositoryLocator, Transaction Manager and Factory classes can perfectly be used in a comprehensive enterprise solution without or little changes.</p>
+<p>In the next chapter we will discuss the WCF implementation and see for the first time how our application is decoupled between two instances: the client and the server.</p>

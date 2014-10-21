@@ -1,0 +1,40 @@
+﻿<Window x:Class="eDirectory.WPF.Agenda.View.CustomerDetailView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"        
+        Title="CustomerDetail" Height="200" Width="300"  WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Name="CustomerDetails" Height="Auto"/>
+            <RowDefinition Name="Commands" Height="Auto"/>
+            <RowDefinition Name="Errors" Height="Auto"/>
+        </Grid.RowDefinitions>
+        <GroupBox Header="Customer Details" Margin ="5" Padding="5">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Name="Name" />
+                    <RowDefinition Name="FirstName" />
+                    <RowDefinition Name="Telephone" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Name="Label" />
+                    <ColumnDefinition Name="Value" />
+                </Grid.ColumnDefinitions>
+                
+                <Label Grid.Row="0">First Name:</Label>
+                <Label Grid.Row="1">Last Name:</Label>
+                <Label Grid.Row="2">Telephone:</Label>
+
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Path=Model.Customer.FirstName, Mode=TwoWay, ValidatesOnDataErrors=True}" Validation.ErrorTemplate="{StaticResource validationTemplate}"></TextBox>
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Path=Model.Customer.LastName, Mode=TwoWay, ValidatesOnDataErrors=True}" Validation.ErrorTemplate="{StaticResource validationTemplate}"></TextBox>
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Path=Model.Customer.Telephone, Mode=TwoWay, ValidatesOnDataErrors=True}" Validation.ErrorTemplate="{StaticResource validationTemplate}"></TextBox>
+            </Grid>            
+        </GroupBox>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Grid.Row="1">
+            <Button Padding="5" Margin="5" Command="{Binding Path=CancelCommand}" IsCancel="True">Cancel</Button>
+            <Button Padding="5" Margin="5" Command="{Binding Path=SaveCommand}">Save</Button>
+        </StackPanel>        
+    </Grid>
+</Window>

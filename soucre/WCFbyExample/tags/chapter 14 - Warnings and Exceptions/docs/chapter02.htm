@@ -1,0 +1,268 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Article Source</title>
+<link rel="stylesheet" type="text/css" href="http://s.codeproject.com/App_Themes/Std/CSS/CodeProject.css?dt=2.3.101022.1" />
+<base href="http://www.codeproject.com/KB/architecture/" />
+</head>
+<body>
+<!--
+HTML for article "WCF by Example - Chapter II - Repositories" by Enrique Albert
+URL: http://www.codeproject.com/KB/architecture/wcfbyexample_chapter02.aspx
+Copyright 2010 by Enrique Albert
+All formatting, additions and alterations Copyright © CodeProject, 1999-2010
+-->
+
+
+
+<p><b>Please choose 'View Source' in your browser to view the HTML, or File | Save to save this 
+file to your hard drive for editing.</b></p>
+
+<hr class="Divider subdue" />
+<div>
+
+
+
+
+<!-- Start Article -->
+<span id="ArticleContent">
+<table width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a href="wcfbyexample_baseline.aspx"><img style="WIDTH: 48px; HEIGHT: 48px" height="48" alt="Previous" hspace="0" src="wcfbyexample_introduction/previous.gif" width="48" border="0" complete="true" /></a></td>
+
+<td width="33%"></td>
+
+<td align="right" width="33%"><a href="wcfbyexample_chapter03.aspx"><img style="WIDTH: 48px; HEIGHT: 48px" height="48" alt="Next" hspace="0" src="wcfbyexample_introduction/next.gif" width="48" border="0" complete="true" /></a></td>
+</tr>
+
+<tr>
+<td align="left" width="33%">Chapter I</td>
+
+<td width="33%"></td>
+
+<td align="right" width="33%">Chapter III</td>
+</tr>
+</tbody>
+</table>
+
+<h2>History</h2>
+<p>4-Nov-2010: Source code revision was done as result of some typos</p>
+
+<h2>The Series</h2>
+
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a title="WCF by Example - Introduction" href="wcfbyexample_introduction.aspx">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level.</p>
+
+<h2>Chapter Overview</h2>
+
+<p>In the previous chapter, we introduced a basic implementation of the Repository which requires to be implemented for each entity in our domain. As we indicated, this component is key for persistence purposes for our domain layer and services as they need to use extensively these components. As a result, it is a good approach to streamline our design in this area so we can provide a comprehensive level of service without compromising coupling between the business logic and our back-end persistence implementation. This chapter tries to justify for the creation of a new sort of service: the repository locator. We will see how the use of generics will prove to be indispensable in this pattern. The pattern strives on removing duplication and keeping a simple facade for services and domain entities.</p>
+
+<p>The source code for this chapter can be found at <a title="Chapter II source code" href="http://wcfbyexample.codeplex.com/SourceControl/changeset/changes/67243">Codeplex change set 67243</a>. The latest code for the eDirectory solution is found at <a title="patterns &amp; practices: WCF by example" href="http://wcfbyexample.codeplex.com/SourceControl/changeset/changes/67232">Codeplex</a>. </p>
+
+<h2>Current Design Issues</h2>
+
+<p>Having concrete repositories for each entity is a costly way to provide persistence functionality to our business layer. We need a more flexible design, the current design requires the entities knowing the type of repository to use, in the previous chapter we had:</p>
+
+<pre lang="cs">public static Customer Create(IRepository&lt;customer&gt; repository, CustomerDto operation)
+{
+    ...
+}</pre>
+
+<p>Although the use of an interface using generics seems to be appropriate, we saw that the implementation is costly when creating the in-memory implementation. If we have tens of entities, this is a very expensive approach. Services suffer from the same problem, the need to hold an instance of the repository. </p>
+
+<h2>Introducing the Service Locator</h2>
+
+<p>We need to provide a single implementation for our domain layer and services that can be used in a transparent manner without having to develop individual implementations for each entity type. We also need a design that can provide a mechanism for articulating specialised calls to the back-end if required for different purposes like reporting, performance and so on. (We are not covering this aspect in this chapter thought). The proposed pattern exposes generic methods instead of being a generic class. It serves as a proxy to the back-end repositories providing a transparent mechanism for our services and entities to execute persistence calls. </p>
+
+<p>We are going to leave our <code>IRepository</code> as it was designed in the previous chapter but we are adding a new interface: <code>IRepositoryLocator</code>:</p>
+<img style="WIDTH: 439px; HEIGHT: 196px" height="196" alt="RepositoryLocatorInterface.png" hspace="0" src="wcfbyexample_chapter02/RepositoryLocatorInterface.png" width="439" border="0" /> 
+<p>It is worth noting that both interfaces are very similar, they expose the same functionality but the new implementation uses generic methods:</p>
+
+<pre lang="cs">
+    public interface IRepositoryLocator
+    {
+        #region CRUD operations
+        
+        TEntity Save&lt;TEntity&gt;(TEntity instance);
+        void Update&lt;TEntity&gt;(TEntity instance);
+        void Remove&lt;TEntity&gt;(TEntity instance);
+        
+        #endregion
+
+        #region Retrieval Operations
+
+        TEntity GetById&lt;TEntity&gt;(long id);
+        IQueryable&lt;TEntity&gt; FindAll&lt;TEntity&gt;();
+
+        #endregion
+
+        IRepository&lt;T&gt; GetRepository&lt;T&gt;();
+
+    }
+</pre>
+
+<p>The last method (<code>GetRepository</code>) is not really required in the interface, but it is critical for the base implementation, so for clarity purposes we will expose it on the interface. </p>
+
+<p>The solution will provide two implementations of the <code>RepositoryLocator</code>, the first one for the in-memory and the second for NHibernate. Both implementations share common functionality that we will place in a base class: <code>RepositoryLocatorBase</code>. </p>
+
+<pre lang="cs">
+    public abstract class RepositoryLocatorBase
+        : IRepositoryLocator
+    {
+
+        #region IRepositoryLocator Members
+
+        public TEntity Save&lt;TEntity&gt;(TEntity instance)
+        {
+            return GetRepository&lt;TEntity&gt;().Save(instance);
+        }
+
+        public void Update&lt;TEntity&gt;(TEntity instance)
+        {
+            GetRepository&lt;TEntity&gt;().Update(instance);
+        }
+
+        public void Remove&lt;TEntity&gt;(TEntity instance)
+        {
+            GetRepository&lt;TEntity&gt;().Remove(instance);
+        }
+
+        public TEntity GetById&lt;TEntity&gt;(long id)
+        {
+            return GetRepository&lt;TEntity&gt;().GetById(id);
+        }
+
+        public IQueryable&lt;TEntity&gt; FindAll&lt;TEntity&gt;()
+        {
+            return GetRepository&lt;TEntity&gt;().FindAll();
+        }
+
+        public abstract IRepository&lt;T&gt; GetRepository&lt;T&gt;();
+
+        #endregion
+    }
+</pre>
+
+<p>The beauty of the above implementation is that entities and services delegate onto the <code>RepositoryLocator </code>for finding out the correct repository. Concrete implementations of the base class will provide the mechanism to retrieve the correct back-end repository. </p>
+
+<h2>Re-factor of Entities and Services </h2>
+
+<p>Now we can re-factor the <code>Customer </code>entity to use the <code>RepositoryLocator </code>instead: </p>
+<img style="WIDTH: 608px; HEIGHT: 460px" height="460" alt="CustomerCreateReFactor.gif" hspace="0" src="wcfbyexample_chapter02/CustomerCreateReFactor.gif" width="608" border="0" /> 
+<p>We also replace the <code>Customer </code>repository in the service by the <code>RepositoryLocator</code>: </p>
+<img style="WIDTH: 558px; HEIGHT: 296px" height="296" alt="ServiceRefactor.png" hspace="0" src="wcfbyexample_chapter02/ServiceRefactor.png" width="558" border="0" /> 
+<h2>Re-factor of the In-memory Repositories</h2>
+
+<p>In the previous chapter, we defined the <code>RepositoryEntityStore </code>and <code>RepositoryCustomer</code>. We want to define a single implementation of the <code>IRepository </code>for our in-memory implementation that is valid for all our entities. Unfortunately the in-memory implementation requires a mechanism for generating entity PK, a function that NHibernate resolves delegating to the back-end database. Therefore few changes are required in our entities to facilitate a common facade, a new interface is declared: </p>
+
+<pre lang="cs">public interface IEntity
+{
+    long Id { get; }
+}</pre>
+
+<p>As we mentioned before, we are assuming that all our entities have a numeric PK. We are creating an <code>abstract </code>class implementing this interface: <code>EntityBase</code>. At this point is very simple, we may extend it on later chapters: </p>
+
+<pre lang="cs">public abstract class EntityBase
+        :IEntity
+{
+    public virtual long Id { get; protected set; }
+}</pre>
+
+<p>All entities inherit from this base class, therefore the <code>Customer </code>class will look like: </p>
+
+<pre lang="cs">public class Customer
+        :EntityBase
+{
+    protected Customer() { }
+
+    public virtual string FirstName { get; protected set; }
+    public virtual string LastName { get; protected set; }
+    public virtual string Telephone { get; protected set; }
+
+    public static Customer Create(IRepositoryLocator locator, CustomerDto operation)
+    {
+    ...
+    }
+}</pre>
+
+<p>Please note that the properties have been declared virtual to comply with the lazy load functionality in NHibernate. At this point, we can re-factor our in-memory Repository. We are consolidating the functionality we defined into two classes in one single class, the re-factor is somehow extensive, so we will discuss only the more relevant aspects: </p>
+
+<pre lang="cs">
+    public class RepositoryEntityStore&lt;TEntity&gt;
+        :IRepository&lt;TEntity&gt;
+    {
+        protected readonly IDictionary&lt;long, TEntity&gt; RepositoryMap = new Dictionary&lt;long, TEntity&gt;();
+
+        #region IRepository&lt;TEntity&gt; Members
+
+        public TEntity Save(TEntity instance)
+        {
+            IEntity entityInstance = GetEntityInstance(instance);
+            if (entityInstance.Id != 0)
+            {
+                throw new ApplicationException("Entity instance cannot be saved, the Id field was not cero");
+            }
+            GetNewId(instance);
+            RepositoryMap.Add(entityInstance.Id, instance);
+            return instance;
+        }
+
+        public void Update(TEntity instance) { ... }
+
+        public void Remove(TEntity instance)
+        {
+            IEntity entityInstance = GetEntityInstance(instance);
+            RepositoryMap.Remove(entityInstance.Id);
+        }
+
+        public TEntity GetById(long id)
+        {
+            return RepositoryMap[id];
+        }
+
+        public IQueryable&lt;TEntity&gt; FindAll()
+        {
+            return RepositoryMap.Values.AsQueryable();
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        private void GetNewId(TEntity instance) { ... }
+
+        private readonly IDictionary&lt;Type, MethodInfo&gt; Setters = new Dictionary&lt;Type, MethodInfo&gt;();
+
+        private MethodInfo GetSetter(Type type) { ... }
+
+        private IEntity GetEntityInstance(TEntity instance)
+        {
+            var entityInstance = instance as IEntity;
+            if (entityInstance == null) throw new ArgumentException("Passed instance is not an IEntity");
+            return entityInstance;
+        }
+
+        #endregion
+    }
+</pre>
+
+<p>The save method is expected to generate the Entity Id property, the <code>private </code>helper methods work out the new Id and update the entity. At this point, we can discard our <code>RepositoryCustomer </code>that is not needed anymore and re-factor our tests. </p>
+
+<p>Note [Nov-2010]: Classes in this assembly were later renamed with the InMemory suffix.</p>
+
+<h2>Chapter Summary</h2>
+
+<p>We discussed some of the problems of the pattern used in the previous chapter and the need for a service that provides persistence functionality that does not require additional work if a new entity is added to our entity. The <code>RepositoryLocator </code>is a neat approach that provides a simple layer of abstraction between the business and the persistence layer in an elegant manner. </p>
+
+<p>In the next chapter, we leave the persistence layer to focus on the communication standards and provide the baseline for the messaging process between the client and server components. </p>
+
+</span>
+<!-- End Article -->
+
+
+
+
+</div> 
+</body>
+</html>

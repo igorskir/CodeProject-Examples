@@ -1,0 +1,368 @@
+﻿<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Article Source</title>
+<link rel="stylesheet" type="text/css" href="http://s.codeproject.com/App_Themes/Std/CSS/Main.css?dt=2.6.121130.2" />
+<base href="http://www.codeproject.com/Articles/530789/" />
+</head>
+<body>
+<!--
+HTML for article "WCF by Example - Chapter XVI - EF 5 Implementation" by Enrique Albert
+URL: http://www.codeproject.com/KB/architecture/wcfbyexample_chapter16.aspx
+Copyright 2011 by Enrique Albert
+All formatting, additions and alterations Copyright © CodeProject, 1999-2012
+-->
+
+<hr class="Divider subdue" />
+<div>
+
+
+
+
+<!-- Start Article -->
+<span id="ArticleContent">
+<table border="0" width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a href="wcfbyexample_chapter15.aspx" onclick="return (false);"><img hspace="0" height="48" border="0" width="48" style="width: 48px; height: 48px;" alt="Previous" src="previous.gif" complete="true" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+
+<tr>
+<td align="left" width="33%">Chapter XV</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The Series</h2>
+
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication. For persistence purposes we have covered NHibernate, InMemory and RavenDB. The <a title="WCF by Example - Introduction" href="wcfbyexample_introduction.aspx">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+
+<h2>Chapter Overview</h2>
+<p>This chapter discusses what it takes to implement EF5 Code First using SQL Compact on AzureWebServices and then get a WPF client running in your local machine to interact with the services deployed on Azure.</p>
+<p>In relation to the Azure deployment, I used VS2010; if you are using VS2012 you probably find the deployment easier as the IDE is fully integrated with Azure.</p>
+<p>For those new to the series, the persistence components of the eDirectory solution are designed around the unit of work and repository patterns. The chapter covers what it takes to implement those patterns using EF5.</p>
+
+<p>The following is an example of the code used in the server components:</p>
+<pre lang="cs">
+    public CustomerDto UpdateCustomer(CustomerDto dto)
+    {
+01		return ExecuteCommand(locator => UpdateCustomerCommand(locator, dto));
+    }
+
+    private CustomerDto UpdateCustomerCommand(IRepositoryLocator locator, CustomerDto dto)
+    {
+02		var instance = locator.GetById<Customer>(dto.Id);
+03		instance.Update(locator, dto);            
+		return Customer_to_Dto(instance);
+    }
+</pre>
+<p>Line 01: Entry point for the customer service to update an existing instance</p>
+<p>Line 02: Using the Dto.Id property we use the Locator to resolve the customer instance</p>
+<p>Line 03: Then we delegate to the domain class to update itself passing the locator and the Dto instances</p>
+<p>For a more detailed discussion of the patterns used in the solution, you may want to look at the following chapters:</p>
+<ul>
+<li><a href="http://www.codeproject.com/Articles/90793/WCF-by-Example-Chapter-II-Repositories">Chapter II - Repositories</a></li>
+<li><a href="http://www.codeproject.com/Articles/93161/WCF-by-Example-Chapter-IV-Transaction-Manager">Chapter IV - Transaction Manager</a></li>
+</ul>
+<h2>Entity Framework Implementation - Overview</h2>
+<p>I wanted to achieve the following goals implementing EF in the eDirectory solution:</p>
+<ul>
+<li>Minimal changes to the domain entities</li>
+<li>If feasible, do not code changes in the service implementation</li>
+<li>The final solution should not break existing implementations</li>
+</ul>
+<p>The following were the most relevant changes taken to get EF working:</p>
+<ul>
+<li>Replace the specialised Iesi collections by .NET collections</li>
+<li>Inner Mapping classes inheriting from EntityTypeConfiguration in the entity classes</li> 
+<li>The introduction of a new <code>FlushModifications</code> in the <code>RepositoryLocator</code></li>
+</ul>
+<p>The first change, the one regarding the collections, was easy to resolved. The one regarding the Mapping inner classes is a way to replace the mapping configuration we had in NHibernate. I don't like to have persistence declaration within the entity but it was an easy way to manage mapping declarations for non-public members, which is the case of the collections in the eDirectory solution. The last one is relevant as EF manages identity columns in a different fashion than NHibernate does when a new entity is created. When NHibernate always provides an Id value once the <code>Save</code> method is invoked, EF does not do so when the <code>Add</code> method is invoked. The <code>FlushModifications</code> persists the all modifications so the new entities get the Id property populated, all that takes place within the current transaction.</p>
+<h2>EF Repository</h2>
+<p>This is the third time we implement this pattern within the series: <a href="http://www.codeproject.com/Articles/124074/WCF-by-Example-Chapter-XI-NHibernate-Implementatio">NHibernate</a> and the <a href="http://www.codeproject.com/Articles/509581/WCF-by-Example-Chapter-XV-RavenDB-Implementation">RabenDB</a> implementations. But maybe a quick remainder of what a Repository means within the eDirectory solution; in first place it is a generic class that exposes basic CRUD operations for a domain entity, but it also exposes a <code>FindAll</code> method that returns a <code>IQueryable</code> instance. I have used the EF linq implementation: <code>AsQueryable</code> to provided such a functionality:</p>
+<pre lang="cs">
+    public class RepositoryEF&lt;TEntity&gt;
+        : IRepository&lt;TEntity&gt; where TEntity : class
+    {
+        private readonly IDbSet&lt;TEntity&gt; _dbSet;
+
+        public RepositoryEF(IDbSet&lt;TEntity&gt; dbSet)
+        {
+            _dbSet = dbSet;
+        }
+        
+        #region Implementation of IRepository&lt;TEntity&gt;
+
+        public TEntity Save(TEntity instance)
+        {
+            return _dbSet.Add(instance);
+        }
+
+        public void Update(TEntity instance)
+        {
+        }
+
+        public void Remove(TEntity instance)
+        {
+            _dbSet.Remove(instance);
+        }
+
+        public TEntity GetById(long id)
+        {
+            return _dbSet.Find(id);
+        }
+
+        public IQueryable&lt;TEntity&gt; FindAll()
+        {
+            return _dbSet.AsQueryable();
+        }
+
+        #endregion
+    }
+</pre>
+<p>The <code>IDbSet</code> provides all the functionality that is required, implementing the <code>IRepository</code> pattern using EF was very straight forward</p>
+<h2>EF Repository Locator</h2>
+<p>The <code>IRepositoryLocator</code> main responsibility is the creation of entity repositories within the transaction, the first time a repository is used the locator creates it. In the case of the EF implementation, it also exposes the <code>FlushModifications</code> that it was mentioned above. The code, again, is straight forward:</p>
+<pre lang="cs">
+    public class RepositoryLocatorEF
+        : RepositoryLocatorBase
+    {
+        private readonly DbContext _dbContext;
+
+        public RepositoryLocatorEF(DbContext dbContext)
+        {
+            _dbContext = dbContext;
+        }
+
+        #region Overrides of RepositoryLocatorBase
+
+        public override void FlushModifications()
+        {
+            base.FlushModifications();
+            _dbContext.GetObjectContext().SaveChanges(SaveOptions.DetectChangesBeforeSave);
+        }
+
+        protected override IRepository&lt;TEntity&gt; CreateRepository&lt;TEntity&gt;()
+        {
+            return new RepositoryEF&lt;TEntity&gt;(_dbContext.Set&lt;TEntity&gt;());
+        }
+
+        #endregion
+    }
+</pre>
+<p>So the locator keeps a reference to a <code>DbContext</code> that helps creating repository instances but it also helps in getting the <code>ObjectContext</code> that allows us to save the changes in the middle of a transaction without committing. By the way, the <code>GetObjectContext</code> is just an extension method that you can find at the <code>DbContextExtensions</code> under the TransManager folder.</p>
+<h2>EF Transaction Manager</h2>
+<p>This is implementation is the one that required the most code, nevertheless, it is not too bad, in 70 LOC we have a full transactional EF component in place. As its name indicated, this class is responsible for managing all the entity changes within a transaction; we use this class within a <code>using</code> statement and then we invoke the <code>ExecuteCommand</code> that gives access to a <code>RepositoryLocator</code>; the use of lambdas delegating to helper methods is a must when using this pattern. When the using statement is complete, the transaction manager looks after committing all the changes. If an exception takes place, a rollback is actioned without any additional code statements in the business logic. Following is the code:</p>
+<pre lang="cs">
+    public class TransManagerEF
+        : TransManagerBase
+    {
+        private readonly DbContext _dbContext;
+        private DbTransaction _transaction;
+
+        public TransManagerEF(DbContext dbContext)
+        {
+            _dbContext = dbContext;
+            var locator = new RepositoryLocatorEF(_dbContext);
+            Locator = locator;
+        }
+       
+        public override void BeginTransaction()
+        {
+            base.BeginTransaction();
+            if (_dbContext.GetObjectContext().Connection.State != ConnectionState.Open)
+            {
+                _dbContext.GetObjectContext().Connection.Open();
+            }
+            _transaction = _dbContext.GetObjectContext().Connection.BeginTransaction();
+        }
+
+        public override void CommitTransaction()
+        {
+            base.CommitTransaction();
+            _dbContext.GetObjectContext().SaveChanges(SaveOptions.DetectChangesBeforeSave);
+            _dbContext.GetObjectContext().AcceptAllChanges();    
+            _transaction.Commit();
+        }
+
+        public override void Rollback()
+        {
+            base.Rollback();            
+            _transaction.Rollback();
+        }
+
+        ...
+    }
+</pre>
+<p>Again a <code>DbContext</code> instance is the key EF component used here, in fact, the same instance is passed to the <code>RepositoryLocator</code> created with this <code>TransactionManager</code>. You can see how full control over the connection is taken, here we need to fetch the <code>ObjectContext</code> as the <code>DbContext</code> instance is not good for what we need. The <code>ObjectContext</code> provides all the advanced functionality that is required to manage the transaction instead. Worth to mention is the <code>DbTransation</code> instance that allows to rollback the changes if required.</p>
+<h2>EF Transaction Manager Factory</h2>
+<p>The only role for this class is the creation of <code>TransactionManager</code> instances. The code is the following:</p>
+<pre lang="cs">
+    public class TransManagerFactoryEF
+        : ITransFactory
+    {
+        public IModelCreator ModelCreator { get; private set; }
+
+        public TransManagerFactoryEF(IModelCreator modelCreator)
+        {
+            ModelCreator = modelCreator;
+        }
+
+        #region Implementation of ITransFactory
+
+        public ITransManager CreateManager()
+        {
+            return new TransManagerEF(new eDirectoryDbContext(ModelCreator));
+        }
+
+        #endregion
+    }
+</pre>
+<p>The main difference with other implementations is the <code>IModelCreator</code>, this is an EF Code First requirement; it helps in the EF initialisation and in the entity to table mapping. In first place we have a new class <code>eDirectoryDbContext</code>:</p>
+<pre lang="cs">
+    public class eDirectoryDbContext : DbContext
+    {
+        public IModelCreator ModelCreator { get; private set; }
+
+        public eDirectoryDbContext(IModelCreator modelCreator): base("eDirectory")
+        {
+            ModelCreator = modelCreator;
+        }
+
+        protected override void OnModelCreating(DbModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            ModelCreator.OnModelCreating(modelBuilder);            
+        }
+    }
+</pre>
+<p>This is the common pattern in EF to initialise the persistence layer, in this implementation we dont have to define a DbSet property for each entity/aggregation; instead we delegate to the <code>IModelBuilder</code> to do so. In this way this class is very generic and does not have a direct dependency to our domain/entities. It is worth noting how the constructor delegates to the base class passing the connection name in the App/Web configuration file. You may want to articulate a more flexible mechanism in your own implementation.</p>
+<p>The <code>IModelBuilder</code> implementation is straight forward:</p>
+<pre lang="cs">
+    public class ModelCreator:IModelCreator
+    {
+        #region Implementation of IModelCreator
+
+        public void OnModelCreating(DbModelBuilder modelBuilder)
+        {
+            modelBuilder.Conventions.Remove&lt;PluralizingTableNameConvention&gt;();
+            modelBuilder.Configurations.Add(new Customer.Mapping());                        
+            modelBuilder.Entity&lt;Address&gt;();
+        }
+
+        #endregion
+    }
+</pre>
+<p>It is just pretty much a fluent declaration of our mappings, a very short one though; this class resides on the Domain project and it gets injected at run time on the <code>TransManagerFactoryEF</code>. Then the first time a <code>DbContext</code> is used, this class is invoked and configures EF so it can work with our database. EF is quite smart linking the Poco classes to the database, in our case, it just needs a little help.</p>
+<p>In first place, you can use DataAnnotation attributes, the EntityBase uses the [Key] attribute to indicate which is the PK in all our entities. Then you can use the generic <code>Entity</code> method in the <code>ModelBuilder</code>, or you can also delegate to an <code>EntityTypeConfiguration</code> class. This is the case for the <code>Customer</code> entity:</p>
+<pre lang="cs">
+    [JsonObject(IsReference = true)]
+    public class Customer
+        :EntityBase
+    {
+        protected Customer()
+        {
+            AddressSet = new HashSet&lt;Address&gt;();
+        }
+
+        ...        
+        
+        protected virtual ICollection&lt;Address&gt; AddressSet { get; set; }
+
+        ...
+
+        public class Mapping : EntityTypeConfiguration&lt;Customer&gt;
+        {
+            public Mapping()
+            {
+                HasMany(c =&gt; c.AddressSet).WithRequired(a =&gt; a.Customer);
+            }
+        }
+    }
+</pre>
+<p>The <code>Mapping</code> class is internal so it can access the <code>AddressSet</code> collection that is not publicly exposed. The customised mapping declares the collection using the "hidden" collection and its navigation mapping with the Address entity. As I said before, you may not like to include this sort of dependency in your entities, another approach is to use partial classes to achieve the same result. Worth to notice, we don't really need to declare the <code>Address</code> entity in the <code>ModelBuilder</code>, EF can work out the configuration mappings from the aggregate root entities.</p>
+<h2>WPF Client Configuration with EF and SQL Compact</h2>
+<p>To get the WPF client to use EF to connect to a SQL Compact database you have to add the following section to your configuration file:</p>
+<pre lang="xml">
+  &lt;connectionStrings&gt;
+    &lt;add name="eDirectoryDbContext" providerName="System.Data.SqlServerCe.4.0" connectionString="Data Source=|DataDirectory|\eDirectory.sdf;default lock timeout=60000" /&gt;
+  &lt;/connectionStrings&gt;
+</pre>
+<p>Watch out for the connection name, it is the same one that we use declaring the <code>eDirectoryDbContext</code> but with the "Context" suffix. As you can see we indicate that the database is to be found at the <code>DataDirectory</code>, that is, the output folder for a client application or the App_Data folder in a web application. Then add the <code>EntityFramework.SqlServerCompact</code> package, it will also add the following dependencies:</p>
+<img src="nuget_packages.png" />
+<p>Then check that the following lines were added to y</p>our configuration file:</p>
+<pre lang="xml">
+  &lt;entityFramework&gt;
+    &lt;defaultConnectionFactory type="System.Data.Entity.Infrastructure.SqlCeConnectionFactory, EntityFramework"&gt;
+      &lt;parameters&gt;
+        &lt;parameter value="System.Data.SqlServerCe.4.0" /&gt;
+      &lt;/parameters&gt;
+    &lt;/defaultConnectionFactory&gt;
+  &lt;/entityFramework&gt;
+</pre>
+<p>In this example, the SQL Compact database was already created. It should not be difficult to let EF Code First to generate the database if needed. You may also install the <code>SQL Server Compact Tools</code> VS Extension. It provides some nice functionality for creating and managing compact databases.</p>
+<p>At this point you should try to test the application locally and when you are sure things are working you should be ready to deploy to the web.</p>
+<h2>Deployment to Azure WebSites</h2>
+<p>You may know that currently Azure Web Sites offer free hosting for small web site deployments, you may want to check for <a href="http://www.windowsazure.com/en-us/pricing/calculator/">pricing</a> and <a href="http://www.windowsazure.com/en-us/home/scenarios/web-sites/">features</a>, deployment using VS2010 or VS2012 is very straight forward if <a href="http://www.windowsazure.com/en-us/develop/downloads/">the Azure SDK</a> is installed in your machine. You may check out this <a href="http://www.youtube.com/watch?v=i8MOJho5TDs">video from Scott Hanselman</a> or a <a href="http://www.windowsazure.com/en-us/develop/net/tutorials/get-started/">full article</a> regarding deployment.</p>
+<p>But you can also deploy the application using a FTP client, if you do so, you don't need to install the SDK at all. So with this article two set of binaries are provided: WPF client configured to execute with the WcfByExamples server in Azure and the server side artifacts so you can try to deploy it by yourself.</p>
+<h2>WPF Client</h2>
+<p>Download the WPF Client binaries and execute the application:</p>
+<img src="wpf_client_connected_to_azure_web_site.png"/>
+<p>The client is configured to connect to the Azure services:</p>
+<pre lang="xml">
+&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+    &lt;add key="SpringConfigFile" value="file://WcfConfiguration.xml" /&gt;
+  &lt;/appSettings&gt;
+  &lt;system.serviceModel&gt;
+    &lt;client&gt;
+      &lt;endpoint address="http://wcfByExample.azurewebsites.net/CustomerWcfService.svc/CustomerServices" 
+				binding="basicHttpBinding" 
+				contract="eDirectory.Common.ServiceContract.ICustomerService" 
+				name="BasicHttpBinding_ICustomerService"&gt;
+      &lt;/endpoint&gt;
+      &lt;endpoint address="http://wcfByExample.azurewebsites.net/AddressWcfService.svc/AddressServices" 
+				binding="basicHttpBinding" 
+				contract="eDirectory.Common.ServiceContract.IAddressService" 
+				name="BasicHttpBinding_IAddressService"&gt;
+      &lt;/endpoint&gt;
+    &lt;/client&gt;
+  &lt;/system.serviceModel&gt;
+&lt;/configuration&gt;
+</pre>
+<p>So the client configuration is very simple and because it uses the basic Http binding you should have not trouble to get it working.</p>
+<h2>Server Deployment</h2>
+<p>As mentioned earlier, with the Azure SDK the deployment is easy from VS; here instead, I am going to explain how to deploy the server solution manually, you need to do the following:</p>
+<ul>
+<il>Download eDirectory server binaries found within this article</il>
+<il>Install a FTP client, I used <a href="http://filezilla-project.org/download.php?type=client">FileZilla</a></il>
+<il>Create an account in Azure so you can create a web site</il>
+<il>Deploy the server binaries</il>
+<il>Point WPF client to your site</il>
+</ul>
+<h3>Create Web Site in Azure</h3>
+<p>Once you have an Azure account, you need to create a web site using the 'quick create' option:</p>
+<img src="new_web_site_quick_create.png" />
+<p>Then, give it a name:</p>
+<img src="new_web_site_url.png" />
+<p>Once it is created, we need to set the FTP user and password. Select 'Deployment Credential' option on the right side and enter a user name and password:</p>
+<img src="credentials.png" />
+<p>You should be able to gather the following details in the dashboard on the right side:</p>
+<img src="ftp_details.png" />
+<p>With that it should be easy to connect using the FTP client:</p>
+<img src="ftp_server_files.png" />
+<p>Copy all the server files, including the App_Data and bin folder, to the wwwroot folder in the Azure site. When you are finish, you can configure the client to point to your site. Just change the <code>eDirectory.WPF.exe.config</code> so the end points are renamed using your site name:</p>
+<img src="wfp_client_config_file.png" />
+<h3>Enable NHibernate Instead</h3>
+<p>You may want to change the server side to use NHibernate instead, it is just one liner change. Open the web.config file and change the appSetting 'SpringConfigFile' so is set to ServerNhConfiguration.xml instead:</p>
+<img src="web_config_nh_settings.png" />
+<!-- End Article -->
+</div> 
+</body>
+</html>
+

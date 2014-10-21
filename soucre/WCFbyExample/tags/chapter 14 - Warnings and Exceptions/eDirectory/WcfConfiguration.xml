@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  NHibernate Configuration
+  ========================
+-->
+  <objects xmlns="http://www.springframework.net">
+
+    <!-- CLIENT SERVICE LOCATOR -->
+    <object 
+            id="ClientServiceLocatorRef" 
+            type="eDirectory.WPF.Services.ClientServiceLocator, eDirectory.WPF"  
+            factory-method="Instance" 
+            singleton="true">
+      
+      <property name="ContractLocator" ref="ClientContractLocatorRef" />
+      <property name="ExceptionManager" ref="BusinessExceptionManagerRef" />
+      <property name="WarningManager" ref="BusinessWarningManagerRef" />
+      
+    </object>
+    
+    <!-- Client Contract Locator -->
+    <object 
+            id="ClientContractLocatorRef" 
+            type="eDirectory.WPF.Services.ClientContractLocator, eDirectory.WPF">
+      
+      <property name="NextAdapterLocator" ref="ContractLocatorRef" />
+    </object>
+
+    <!-- Business Exception Manager -->
+    <object
+            id="BusinessExceptionManagerRef"
+            type="eDirectory.WPF.Services.BusinessExceptionManager"/>
+
+    <!-- Business Warning Manager -->
+    <object
+            id="BusinessWarningManagerRef"
+            type="eDirectory.WPF.Services.BusinessWarningManager"/>
+
+    <!-- Next Adapter Locator -->
+    <object
+            id="ContractLocatorRef"
+            type="eDirectory.WPF.Services.Wcf.WcfContractLocator, eDirectory.WPF" />
+
+  </objects>

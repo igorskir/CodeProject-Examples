@@ -1,0 +1,139 @@
+﻿<table width="100%" border="0">
+<tbody>
+<tr>
+<td width="33%" align="left"><a href="wcfbyexample_chapter07.aspx"><img complete="true" src="wcfbyexample_introduction/previous.gif" alt="Previous" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td width="33%" align="left">Chapter VII</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a href="wcfbyexample_introduction.aspx" title="WCF by Example - Introduction">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level.</p>
+<h2>Chapter overview</h2>
+<p>In the previous chapter we kept working in the client side, we articulated a mechanism that permits invoking server services from the ViewModel class in a decoupled fashion. In this chapter we will define the pattern for the View (XAML) to invoke the mentioned services 
+    from the ViewModel. We will introduce the RelayCommand pattern which leverages the using of XAML bindings capabilities 
+    easing the execution of methods declared in the ViewModel.</p>
+<p>This pattern is based on an <a href="http://msdn.microsoft.com/en-us/magazine/dd419663.aspx#id0090030">article</a> by Josh Smith about the MVVM pattern, he covers a lot of MVVM topics in his <a href="http://joshsmithonwpf.wordpress.com/">blog</a>. 
+    The source code for this chapter can be found at
+    <a href="http://wcfbyexample.codeplex.com/SourceControl/changeset/changes/73741">
+    Codeplex change set 73741</a>. The latest code for the eDirectory solution is 
+    found at
+    <a href="http://wcfbyexample.codeplex.com/SourceControl/list/changesets">
+    Codeplex</a>.</p>
+<h2>ICommand</h2>
+<p>A comprehensive explanation of the pattern can be found in Josh's articles, as a 
+    result we are going to focus in the implementation in our solution rather than 
+    explaining in detail the pattern. You may find beneficial reading the article 
+    before continuing with this chapter.</p>
+<p>In our client we created two command buttons in
+    <a href="wcfbyexample_chapter06.aspx">
+    Chapter VI</a> when the XAML was defined; the save and the refresh buttons. It 
+    might not be obvious at the time but we declared bindings to actions in the 
+    ViewModel. These methods were not defined in the CustomerViewModel on Chapter VI 
+    but did not stop us from executing the application. It is worth noting this 
+    aspect of the XAML Views, faulty bindings don't throw exceptions; however well 
+    documented warnings can be found in the VS when debugging the application. As an 
+    example, the Save button XAML declaration in Chapter VI was:</p>
+<pre lang="xml">    &lt;Button Grid.Column=&quot;1&quot; Grid.Row=&quot;2&quot; Padding=&quot;5&quot; Margin=&quot;5&quot; Command=&quot;{Binding SaveCommand}&quot;&gt;Save&lt;/Button&gt; 
+</pre>
+<p>The XAML is declaring that the command action will invoke a read-only property called SaveCommand in the ViewModel, 
+    the property must implement the ICommand interface to work.</p>
+<p>
+</p><h2>RelayCommand Class</h2>
+<p>The RelayCommand provides a simple mechanism for declaring properties in the ViewModel so buttons can invoke actions. In the example of the Save button the binding indicates that the button will invoke a property called <code>SaveCommand</code>; the <code>CustomerViewModel</code> declares the property as follows:</p>
+<pre lang="cs">01      private RelayCommand SaveCommandInstance;
+
+        public RelayCommand SaveCommand
+        {
+            get
+            {
+                if (SaveCommandInstance != null) return SaveCommandInstance;
+02              SaveCommandInstance = new RelayCommand(a =&gt; Save());
+                return SaveCommandInstance;
+            }
+        }
+
+        private void Save()
+        {
+03          var result = CustomerServiceInstance.CreateNewCustomer(Model.NewCustomerOperation);
+            Refresh();
+        }
+</pre>
+<p>We are using a lazy approach (line 02) to create the <code>RelayCommand</code> that is stored in a private instance (line 01); this approach permits to use a lambda expression that indicates the internal method that will be called when the View invokes the Execute method of the <code>RelayCommand</code>. It is worth noting that two constructors are available, in this example we are using the one that only requires to pass the action to invoke. The second constructor provides a mechanism for validation which in the case of command buttons ensures that the button is only enable if the validation is successful. We may see examples in later chapters of how to use this feature.</p>
+<p>Lets see what other changes are required to get our front-end invoking service methods.</p>
+<h2>Service Implementation - Use of the ContractLocator</h2>
+<p>In line 03 we can see that the <code>Save</code> method is invoking the <code>CreateNewCustomer</code> service method, couple aspects to explain at this point is how the <code>CustomerServiceInstance</code> is declared and also the mechanism used to pass customer details from the UI to the service using the <code>NewCustomerOperation</code> DTO</p>
+<p>The <code>CustomerServices</code> is obtained using the <code>ContractLocator</code> that we defined in the previous Chapter VII, this takes place in the constructor of the ViewModel:</p>
+<pre lang="cs">        private readonly ICustomerService CustomerServiceInstance;
+        
+        public CustomerViewModel()
+        {            
+01          CustomerServiceInstance = ClientServiceLocator.Instance().ContractLocator.CustomerServices;
+02          Refresh();
+            View = new CustomerView { DataContext = this };
+            View.ShowDialog();
+        }
+</pre>
+<p>In line 01 we can observe how we use the <code>ClientServiceLocator</code> to get the <code>ContractLocator</code> that exposes an implementation of the <code>ICustomerService</code>. We see later in this chapter how the <code>ContractLocator</code> is being declared, in a future chapter we will cover how DI resolves this aspect in a very neat manner.</p>
+<p>The <code>Refresh</code> method is called before we display the view; we do so to initialise the Model as we can see next:</p>
+<pre lang="cs">        private void Refresh()
+        {
+01          var result = CustomerServiceInstance.FindAll();
+02          Model = new CustomerModel() { NewCustomerOperation = new CustomerDto(), CustomerList = result.Customers};
+        }
+</pre>
+<p>The purpose of the <code>Refresh</code> method is to retrieve all the <code>Customer</code> instances invoking the <code>FindAll</code> service method and then create an instance of the <code>CustomerModel</code> class which is the model for the <code>CustomerView</code>. In line 02, a <code>CustomerDto</code> instance is assigned to the <code>NewCustomerOperation</code> property. This is bound to the customer details section in the front-end using a <code>TwoWay</code> mode. This means that the XAML is capable of updating the <code>CustomerDto</code> instance without any other additional code, not too bad. This is a nice pattern for populating service method parameters as we saw in the <code>Save</code> method.</p>
+<h2>BootStrapper Changes</h2>
+<table>
+<tbody><tr>
+<td><img src="wcfbyexample_chapter08/Client_references.png" /></td>
+<td><p>At this stage in the project we just need the WPF client to invoke the service methods within a single process without the overhead of dealing with WCF services. In a later chapter we will cover DI and how we can deploy the server assemblies without having to create references in our client to the server components. For the time being, for the sake of keeping things simple we will just add those reference to the client project</p>
+<p>Then we just need to enhance the <code>eDirectoryBootStrapper</code> adding the following code to the <code>InitialiseDependencies</code> method:</p>
+<pre lang="cs">    class eDirectoryBootStrapper
+    {
+        public void Run()
+        {
+            InitialiseDependencies();
+        }
+
+        private void InitialiseDependencies()
+        {
+01          GlobalContext.Instance().TransFactory = new TransManagerEntityStoreFactory();
+02          Container.RequestContext = new RequestContextNaive();      
+03          ClientServiceLocator.Instance().ContractLocator = 
+              new ClientContractLocator 
+              { 
+                NextAdapterLocator = new ServerContractLocator() 
+              };
+        }
+    }
+</pre>
+<p>So we indicate the client that we want to use the in-memory implementation in lines 01 and 02; these components are used by the <code>ServerContractLocator</code> that is used when the <code>ContractLocator</code> is declared.</p>
+</td>
+</tr>
+</tbody></table>
+<h2>Almost There</h2>
+<table>
+<tbody><tr>
+<td><img src="wcfbyexample_chapter08/Client.png" /></td>
+<td>
+<p>If we run the application and we enter some customer details and then press the save button, we notice that nothing happens. But if we debug our code we can confirm that our <code>Save</code> method is executed:</p>
+<img src="wcfbyexample_chapter08/Save_Method.png" />
+<p>It seems that everything is working properly, the <code>Refresh</code> method seems to work fine after the <code>CreateNewCustomer</code> service method was executed. We can even inspection the results and see that the returned collection contains one customer and all the properties are correctly populated. So then why the front-end is not being refreshed.</p>
+<p>This is another characteristic of WPF clients, we need to indicate the view that the model has been refreshed. In order to do so we need to introduce the <code>INotifyPropertyChanged</code> interface.</p>
+</td>
+</tr>
+<tr>
+<td align="right" colspan="2"><img src="wcfbyexample_chapter08/Refresh_Method.png" /></td>
+</tr>
+</tbody></table>
+
+<h2>Chapter Summary</h2>
+<p>In this chapter we introduced the <code>RelayCommand</code>, an implementation of the <code>ICommand</code> by Josh Smith. We discussed how the View and ViewModel are designed so the front-end can invoke service methods. At this point, we almost have the application working, using the in-memory mode and invoking the server methods within the client process, avoiding the WCF and NHibernate components. We just need the ViewModel to notify the View when the Model has been updated.</p>
+<p>The next chapter resolves the notification issue and provides a comprehensive infrastructure to start demonstrating our solution features to the client.</p>

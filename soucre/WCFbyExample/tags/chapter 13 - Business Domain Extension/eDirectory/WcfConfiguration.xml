@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  NHibernate Configuration
+  ========================
+-->
+  <objects xmlns="http://www.springframework.net">
+
+    <!-- CLIENT SERVICE LOCATOR -->
+    <object 
+            id="ClientServiceLocatorRef" 
+            type="eDirectory.WPF.Services.ClientServiceLocator, eDirectory.WPF"  
+            factory-method="Instance" 
+            singleton="true">
+      
+      <property name="ContractLocator" ref="ClientContractLocatorRef" />
+    </object>
+    
+    <!-- Client Contract Locator -->
+    <object 
+            id="ClientContractLocatorRef" 
+            type="eDirectory.WPF.Services.ClientContractLocator, eDirectory.WPF">
+      
+      <property name="NextAdapterLocator" ref="ContractLocatorRef" />
+    </object>
+    
+    <!-- Next Adapter Locator -->
+    <object
+            id="ContractLocatorRef"
+            type="eDirectory.WPF.Services.Wcf.WcfContractLocator, eDirectory.WPF" />
+
+  </objects>

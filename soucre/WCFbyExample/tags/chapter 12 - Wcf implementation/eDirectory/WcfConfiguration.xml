@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  NHibernate Configuration
+  ========================
+-->
+  <objects xmlns="http://www.springframework.net">
+
+    <!-- CLIENT SERVICE LOCATOR -->
+    <object 
+            id="ClientServiceLocatorRef" 
+            type="eDirectory.WPF.Services.ClientServiceLocator, eDirectory.WPF"  
+            factory-method="Instance" 
+            singleton="true">
+      
+      <property name="CommandDispatcher" ref="CommandDispatcherRef" />
+    </object>   
+
+    <!-- Command Dispatcher -->
+    <object
+            id="CommandDispatcherRef"
+            type="eDirectory.WPF.Services.Wcf.WcfCommandDispatcher, 
+                  eDirectory.WPF"/>
+  </objects>

@@ -1,0 +1,140 @@
+﻿<table width="100%">
+<tbody>
+<tr>
+<td width="33%" align="left"><a href="wcfbyexample_chapter05.aspx"><img complete="true" src="wcfbyexample_introduction/previous.gif" alt="Previous" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td width="33%" align="left">Chapter VI</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a href="wcfbyexample_introduction.aspx" title="WCF by Example - Introduction">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level.</p>
+<h2>Chapter overview</h2>
+<p>In the previous chapters we have discussed the design and implementation of the core server components. At this time we are ready for setting up a client to interact with our services and business logic at the server side.</p>
+<p>As we indicated at the start of the series, our rich client is based on WPF using the MVVM pattern. It is assumed that the reader is familiar with the basic concepts of WPF and the MVVM.</p>
+<h2>Before we start</h2>
+<p>The main principle used in the design of the rich client is that the model should contain as much information as possible and using the XAML binding capabilities so very little code is created in the view. The ViewModel will be responsible for the creation of views and the retrival of model instances that are bound directly to the view.</p>
+<p>As a result of this approach the design uses extensively the operation pattern (RelayCommand) on the model to invoke methods defined in the ViewModel, on the view the dependency properties in XAML are used as a way for extending the binding capabilities between the model and view. Also converters are useful in this approach. For the command execution. At a later chapter, we will demonstrate the use of the INotifyPropertyChange pattern in the ViewModel so both the model and view can notify each other when bound properties are changed.</p>
+<p>As usual, for the view design we are keeping again things extremely simple. We are going to use the WPFToolkit as it provides a nice and comprehensive grid but for most of the time the view design just consists of writting XAML code.</p>
+<h2>WPFClient project</h2>
+<table>
+<tr>
+<td>
+<p>This chapter introduces a new project in our eDirectory solution: eDirectory.WPF. The WPF project in this chapter consists of a single screen that provides users to create and visualize customer entities. Following the MVVM pattern, three files are created under the customer folder for the View (XAML), Model (DTOs) and ViewModel.</p>
+</td>
+<td>
+<img src="wcfbyexample_chapter06/WpfClientProject.png" />
+</td>
+</tr>
+</table>
+<h2>The Model</h2>
+<table>
+<tr>
+<td>
+<p>The model is very simple, we are just re-using the DTOs that were already defined in the common assembly. In this way it is very simple to retrieve data from the services and re-used in a easy manner.</p>
+<p>Operations are just DTO instances used to send information to services to the server, bindings are normally used to populate these instances so very little code is required when commands are executed when calling server services.
+</p>
+</td>
+<td>
+<pre lang="C#">
+    public class CustomerModel
+    {
+        public CustomerDto NewCustomerOperation { get; set; }
+        public IList&lt;CustomerDto&gt; CustomerList { get; set; }
+    }
+</pre>
+</td>
+</tr>
+</table>
+<h2>The View</h2>
+<p>Following is an extract of the XAML class:</p>
+<pre lang="C#">
+&lt;Window x:Class="eDirectory.WPF.Customer.View.CustomerView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:tk="http://schemas.microsoft.com/wpf/2008/toolkit"        
+        Title="Customer View" Height="400" Width="400" WindowStartupLocation="CenterScreen"&gt;
+    &lt;Grid Name="MainLayout"&gt;
+        ... 
+        &lt;GroupBox Header="New Customer" Margin="5" Padding="5" Grid.Row="0"&gt;
+            &lt;Grid Name="NewCustomer"&gt;
+            ...                
+                &lt;Label Grid.Column="0" Grid.Row="0"&gt;First Name&lt;/Label&gt;
+                &lt;TextBox Grid.Column="0" Grid.Row="1" Text="{Binding Path=Model.NewCustomerOperation.FirstName, Mode=TwoWay}"&gt;&lt;/TextBox&gt;
+                ...
+            &lt;/Grid&gt;
+        &lt;/GroupBox&gt;
+        &lt;GroupBox Header="List of Customers" Margin ="5" Padding="5" Grid.Row="1"&gt;
+            &lt;Grid Name="ListOfCustomers"&gt;
+                ...
+                &lt;tk:DataGrid Grid.Row="0" ... ItemsSource="{Binding Path=Model.CustomerList}"&gt;                    
+                    &lt;tk:DataGrid.Columns&gt;
+                        &lt;tk:DataGridTextColumn Header="Customer Id" Binding="{Binding Path=CustomerId, Mode=OneWay}"/&gt;
+                        ...
+                    &lt;/tk:DataGrid.Columns&gt;
+                &lt;/tk:DataGrid&gt;
+                ...
+            &lt;/Grid&gt;
+        &lt;/GroupBox&gt;
+    &lt;/Grid&gt;
+&lt;/Window&gt;
+</pre>
+<p>The following screen is generated from above XAML:</p>
+<img src="wcfbyexample_chapter06/CustomerView.png" />
+<p>It is worth noting that in the grid definition some properties are disabled so we have explicitly to declare the columns to display and their bindings.</p>
+<img src="wcfbyexample_chapter06/Grid_XAML.png" />
+<h2>The ViewModel</h2>
+<p>The ViewModel responsability is to create an instance of the view and retrieve the model using calls to the server services. At this point the implementation of the ViewModel is simple:</p>
+<pre lang="C#">
+    public class CustomerViewModel
+    {
+        private readonly CustomerView View;
+        
+        public CustomerViewModel()
+        {
+            View = new CustomerView();
+            View.DataContext = this;
+            View.ShowDialog();
+        }
+
+        public CustomerModel Model { get; set; }
+    }
+</pre>
+<p>Couple aspects to notice in above code are:</p>
+<ul>
+    <li>In this implementation the constructor of the ViewModel creates an instance of the view and displays in a dialog mode.</li>
+    <li>The data context of the view is set to the ViewModel class which permits the View binding to any public property in the ViewModel using XAML.</li>
+</ul>
+<h2>The BootStrapper</h2>
+<table>
+<tr>
+<td>
+<p>In a traditional WPF application a view is set as the startup object, in our application this is not the case. We need a little more flexibility so we will create a BootStrapper method in the App.xaml.cs file that creates an instance of a specialiced BootStrapper class and then creates an instance of CustomerViewModel.</p>
+<p>Currently the eDirectoryBootStrapper class has not implementation but it will be used in a later chapter when we cover dependency injection.</p>
+</td>
+<td>
+<img src="wcfbyexample_chapter06/Project_Properties.png" />
+<pre lang="C#">
+    public partial class App : Application
+    {
+        private void BootStrapper(object sender, StartupEventArgs e)
+        {
+            var boot = new eDirectoryBootStrapper();
+            boot.Run();
+            new CustomerViewModel();
+        }
+    }
+</pre>
+</td>
+</tr>
+</table>
+<h2>Chapter summary</h2>
+<p>In this chapter we have created a basic WPF client, currently it cannot execute server methods but we have established the baseline where the view and the model is bound using XAML bindings. We also defined the ViewModel and we indicated how it leverages the creation of views and binding of the model to the view.</p>
+<p>In the next chapter we will introduce the concept of the contract locator which provides the mechanism of executing service calls in a decoupled fashion. In later chapters we will cover the RelayCommandService and the notify property changed pattern.</p>
+

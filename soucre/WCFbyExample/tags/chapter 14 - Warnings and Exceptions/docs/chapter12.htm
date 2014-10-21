@@ -1,0 +1,704 @@
+
+<table border="0" width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a önclick="return (false);" href="wcfbyexample_chapter11a.aspx"><img border="0" alt="Previous" src="wcfbyexample_introduction/previous.gif" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td align="left" width="33%">Chapter IX</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a title="WCF by Example - Introduction" href="wcfbyexample_introduction.aspx">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+<h2>Chapter overview</h2>
+<p>For the first time, besides the given name to the series, we will cover the WCF implementation. As indicated previously, we have provided a development environment for RAD practices where the business domain and UI is streamlined so feedback from the product owners is obtained in a quick fashion; we have discussed in previous chapters that development of the full back-end infrastructure is not required at this stage in the project. Development on the persistence or communication layers should be postponed until an stable domain is available. Although, it is a good practice to design services that will proved not to be problematic later when the WCF implementation takes place; the eDirectory solution, with the inclusion of DTOs, resolves the majority of those problems at the later stage.</p>
+<p>It was originally envisaged that this section of the series to be covered on three different chapters, instead only one is to be produced. As a result of this decision the chapter will be one of the largest so far in the series, we just hope this is not an issue for the readers. The main sections for the chapter are the following:</p> 
+<ul>
+    <li>In-proc WCF testing</li>
+    <li>WCF services implementation and programmatic dynamic client proxies</li>
+    <li>WCF Request context implementation</li>
+    <li>Client Async commands</li>
+</ul>
+<p>The section about in-proc WCF testing demonstrates how easy is to execute the services using WCF, it is a good example of how to implement unit testing on WCF. Also we will demonstrate how we can enhance our existing tests so they can also run using WCF. The purpose is to validate that the services running on WCF can send our communication objects on the &quot;wire&quot; and that the serialization is not failing. In fact, the design is so flexible that you could execute services using WCF with the in-memory or NHibernate mode. Isn't it nice?.</p>
+<p>At a later stage in this chapter we discuss what modifications are required to split our components between the client and server. In summary, we will create a WCF Service Web Site project, discuss what changes are required in the client side and which modifications are required at the client and the server in configuration terms. The section finishes describing how to run the server and the client running in different process for the first time in the series.</p>
+<p>The chapter then finished with the implementation of a customised WCF request context which handles the creation of service instances for each request processed in the server side.</p>
+<h2>In-Proc WCF Tests</h2>
+<p>We are going to demonstrate how it is relatively easy to create test executing WCF services within one single process, which simplifies the creation and execution of unit tests. What we need is to execute the WCF server and client in the same process, which by the way as many of you may know, it is not the standard WCF configuration. As mentioned previously the reason for having tests invoking WCF validates the serialization of the communication objects which is probably one of the most important aspects when working with WCF.</p>
+<p>As explained in previous chapters, at the eDirectory solution, we don't relay on standard WCF infrastructure to communicate business warnings and exceptions; all communication objects are required to inherit from a base class that provides holders for warnings and exceptions. We should create tests for this communication infrastructure before we cover the business services. In the test project we have declared a new service for this purpose, it exposes methods to ensure that we correctly handle business exceptions and warnings and application exceptions:</p>
+<pre lang="cs">namespace eDirectory.UnitTests.WCF
+{
+    [ServiceContract(Namespace = &quot;http://eDirectory/testservices/&quot;)]
+    public interface ITestService
+        : IContract
+    {
+        [OperationContract]
+        DtoResponse MethodThrowsBusinessException();
+
+        [OperationContract]
+        DtoResponse MethodReturnsBusinessWarning();
+
+        [OperationContract]
+        DtoResponse MethodReturnsApplicationException();
+    }
+}
+</pre>
+<p>The implementation of the test service is very straight forward so please look at the source code for the complete implementation of the <code>TestService</code> class:</p>
+<pre lang="cs">namespace eDirectory.UnitTests.WCF
+{
+    public class TestService
+            : ServiceBase, ITestService
+    {
+        #region Implementation of ITestService
+
+        ...
+
+        #endregion
+    }
+}
+</pre>
+<p>Our tests will require to create WCF Services and client channels, the <code>WcfServiceHost</code> provides a set of static helpers for this purpose. The <code>StartService</code> method is used for the creation of service instances; a net pipe endpoint is created using the interface type name:</p>
+<pre lang="cs">    public class WcfServiceHost
+    {
+        private static readonly IDictionary&lt;Type, ServiceHost&gt; ServiceHosts = new Dictionary&lt;Type, ServiceHost&gt;();
+        private static readonly IDictionary&lt;Type, ChannelFactory&gt; ChannelFactories = new Dictionary&lt;Type, ChannelFactory&gt;();
+
+        public static void StartService&lt;TService, TInterface&gt;() where TInterface : IContract
+        {
+            var serviceType = typeof(TService);
+            var interfaceType = typeof(TInterface);
+            if (ServiceHosts.ContainsKey(serviceType)) return;
+01          var strUri = @&quot;net.pipe://localhost/&quot; + interfaceType.Name;
+02          var instance = new ServiceHost(serviceType, new Uri(strUri));
+03          instance.AddServiceEndpoint(interfaceType, new NetNamedPipeBinding(), strUri);
+04          instance.Open();
+05          ServiceHosts.Add(interfaceType, instance);
+        }
+
+        ...
+    }
+</pre>
+<p>In the above code snippet, at Line(01) we use the passed interface to create a unique uri, at Lines(02, 03 and 04) a NetNamePipe endpoint is created. Line(05) adds the endpoint to a static service hashmap so we can get a reference to the instance at a later stage.</p>
+<p>If we need to stop the above endpoint the following method can be used:</p>
+<pre lang="cs">    public class WcfServiceHost
+    {
+        private static readonly IDictionary&lt;Type, ServiceHost&gt; ServiceHosts = new Dictionary&lt;Type, ServiceHost&gt;();
+        private static readonly IDictionary&lt;Type, ChannelFactory&gt; ChannelFactories = new Dictionary&lt;Type, ChannelFactory&gt;();
+
+        ...
+
+        public static void StopService&lt;TInterface&gt;()
+        {
+            var type = typeof(TInterface);
+            if (!ServiceHosts.ContainsKey(type)) return;            
+            var instance = ServiceHosts[type];
+            StopChannel&lt;TInterface&gt;();
+            if (instance.State != CommunicationState.Closed) instance.Close();
+            ServiceHosts.Remove(type);
+        }
+
+        ...
+    }
+</pre>
+<p>For the client side two methods are provided, the <code>InvokeService</code> is the key method in this implementation, the combination of generics, service interfaces and action delegates provides an easy way to execute services on WCF, lets see how this is achieved:</p>
+<pre lang="cs">    public class WcfServiceHost
+    {
+        private static readonly IDictionary&lt;Type, ServiceHost&gt; ServiceHosts = new Dictionary&lt;Type, ServiceHost&gt;();
+        private static readonly IDictionary&lt;Type, ChannelFactory&gt; ChannelFactories = new Dictionary&lt;Type, ChannelFactory&gt;();
+
+        ...
+
+        public static void InvokeService&lt;T&gt;(Action&lt;T&gt; action) where T : IContract
+        {
+01          var factory = GetFactory(action);
+02          var client = factory.CreateChannel();
+03          action.Invoke(client);              
+        }
+
+        public static ChannelFactory&lt;T&gt; GetFactory&lt;T&gt;(Action&lt;T&gt; action) where T : IContract
+        {
+            var type = typeof (T);
+04          if (ChannelFactories.ContainsKey(type)) return ChannelFactories[type] as ChannelFactory&lt;T&gt;;
+05          var netPipeService = new ServiceEndpoint(
+                ContractDescription.GetContract(type),
+                new NetNamedPipeBinding(),
+                new EndpointAddress(&quot;net.pipe://localhost/&quot; + type.Name));
+
+06          var factory = new ChannelFactory&lt;T&gt;(netPipeService);
+            ChannelFactories.Add(type, factory);
+            return factory;
+        }
+    }
+</pre>
+<p>For clarity purposes, an example of the execution of one of tests may help to explain how it works:</p>
+<pre lang="cs">    [TestClass]
+    public class InfrastructureTests
+        :eDirectoryTestBase
+    {
+
+        ...
+
+        [TestMethod]
+        public void ServiceReturnsWarning()
+        {
+10          WcfServiceHost.InvokeService&lt;ITestService&gt;(ServiceReturnsWarningCommand);
+        }
+
+        private void ServiceReturnsWarningCommand(ITestService service)
+        {
+11          var result = service.MethodReturnsBusinessWarning();
+            Assert.IsTrue(result.Response.HasWarning, &quot;A warning was expected&quot;);
+            Assert.IsTrue(result.Response.BusinessWarnings.Count() == 1, &quot;Only one warning was expected&quot;);
+            Assert.IsTrue(result.Response.BusinessWarnings.First().Message.Equals(&quot;Warning was added&quot;));
+        }
+
+        ...
+
+    }
+</pre>
+<p>Lets follow the test execution, it may prove to be easier:</p>
+<p>1 - Line(10) invokes the <code>WcfServiceHost.InvokeService</code> indicating the action to execute and the service interface. This implies that the <code>ServiceReturnsWarningCommand</code> expects an reference to an instance that implements the service interface, this will be our WCF client proxy.<br />
+2 - <code>InvokeService</code> at Line(01) retrieves an instance of a WCF channel factory calling the <code>GetFactory</code> method.<br />
+3 - At Line(02) a client proxy is created using the factory<br />
+4 - At Line(03) the passed delegate, the <code>ServiceReturnsWarningCommand</code> is called passing the client proxy.<br />
+5 - The proxy (<code>service</code>) is used to call the server method at Line(11).</p>
+<p>This pattern where a combination of delegates and generics are used is constantly used in the eDirectory solution, it proves to be very powerful but it may take a little bit of time for new comers to fully understand. If that is your case, you may want to spend a little bit of time debugging the tests until you are fully comfortable with this approach.</p>
+<p>Line(05) needs to match to the server endpoint definition, this is why we use the interface type name in the uri definition.</p>
+<p>We can now define a sort of template that we need to follow when writing WCF tests:</p>
+<p>
+1 - Initialise the WCF server endpoint before the test starts<br />
+2 - At the end of the test we close the server endpoint</p>
+<br />
+<p>So for the <code>InfrastructureTests</code> we can leverage the test framework capabilities to achieve the mentioned template:</p>
+<pre lang="cs">namespace eDirectory.UnitTests.WCF
+{
+    [TestClass]
+    public class InfrastructureTests
+        :eDirectoryTestBase
+    {
+        [TestInitialize]
+        public override void TestsInitialize()
+        {
+            base.TestsInitialize();
+            WcfServiceHost.StartService&lt;TestService, ITestService&gt;();
+        }
+
+        [TestCleanup]
+        public override void TestCleanUp()
+        {
+            WcfServiceHost.StopService&lt;ITestService&gt;();
+            base.TestCleanUp();
+        }
+
+        ...
+
+    }
+}
+</pre>
+<p>Before we finish this section, we are going to demonstrate how little effort is required to &quot;upgrade&quot; our tests so they execute using WCF:</p>
+<pre lang="cs">namespace eDirectory.UnitTests.WCF
+{
+    [TestClass]
+    public class CustomerServiceWcfTests
+01      : CustomerServiceTests
+    {
+        [TestInitialize]
+02      public override void TestsInitialize()
+        {
+            base.TestsInitialize();
+            WcfServiceHost.StartService&lt;CustomerService, ICustomerService&gt;();            
+        }
+
+03      [TestCleanup]
+        public override void TestCleanUp()
+        {
+            WcfServiceHost.StopService&lt;ICustomerService&gt;();
+            base.TestCleanUp();
+        }
+
+        [TestMethod]
+04      public override void CreateCustomer()
+        {
+05          ExecuteBaseMethod(base.CreateCustomer);
+        }
+
+        [TestMethod]
+        public override void FindAll()
+        {
+            ExecuteBaseMethod(base.FindAll);
+        }
+
+        [TestMethod]
+        public override void CheckFindAllNotification()
+        {
+            ExecuteBaseMethod(base.CheckFindAllNotification);
+        }
+
+        [TestMethod]
+        public override void UpdateCustomer()
+        {
+            ExecuteBaseMethod(base.UpdateCustomer);
+        }
+
+        private void ExecuteBaseMethod(Action action)
+        {
+06          WcfServiceHost.InvokeService&lt;ICustomerService&gt;
+                (
+                    service =&gt;
+                        {
+                            this.Service = service;
+                            action.Invoke();
+                        }
+                );
+        }
+
+    }
+}
+</pre>
+<p>So that is all, we need to inherit from the original test class (line(01)) so we can initialise (Line(02)) the endpoint as discussed. The test class provides a helper method named <code>ExecuteBaseMethod</code> which delegates to the already mentioned <code>WcfServiceHost.InvokeService</code> helper method. You also want to notice that we have changed the original class' methods to be declared virtual so they can be overridden on the WCF test implementation. Line(05) demonstrates how we can leverage our tests reusing the logic at the original test class. Not too bad.</p>
+
+<h2>WCF services implementation</h2>
+<p>It is worth noting that in the previous section we have discussed how to test our services on WCF without having to implement a WCF Server project or doing any changes in the client side; this approach permits the upfront testing of our services postponing the full implementation for a later stage.</p>
+<p>But at some stage we will hit the wall and we will have to provide a server using WCF for our clients. This section discusses what is required to build a WCF web site exposing the server methods. It also discusses which changes are required on the client side so WCF proxies are automatically generated without the use of a Web reference and Visual Studio generated proxies. At a final stage we will briefly cover the server and client configuration settings. Before we continue is important to clarify some points:</p>
+<ul>
+    <li>The client has a reference to the the eDirectory.Common assembly</li>
+    <li>We don't use VS generated proxies in the client side, instead we create our WCF proxies programmatic</li>
+    <li>We will declare the methods in the server side so for each request a WCF instance is created, that is, we use <code>PerCall</code> methods</li>
+</ul>
+<p>The purpose is to have two applications, the Client and a WCF Server running as a web server. The client is relative simple:</p>
+<img src="wcfbyexample_chaper12/WcfClient.png" />
+<p>The server is where most components are found:</p>
+<img src="wcfbyexample_chaper12/WcfServer.png" />
+
+<p>We need to declare a new project, this is going to be a WCF Web Site project that eventually will be deployed on IIS. The implementation is relatively easy:</p>
+<ul>
+    <li>Each server service requires a <code>SVC</code> file</li>
+    <li>In the code behind of the service we indicate that the class inherits from the service class in the <code>eDirectory.Domain</code> assembly</li>
+    <li>Each server service is configure to invoke a factory helper class: <code>ServiceFactory</code></li>
+</ul>
+<p>At that is all, this is going to be a project with relatively little code, it is more about configuration which it is probably the way it suppose to be. The most important aspect is the <code>ServiceFactory</code>, its main responsibility is to ensure the start-up of any infrastructure component like the the Dependency Injection container. The implementation is as follows:</p>
+<pre lang="cs">namespace eDirectory.WcfService
+{
+    public class ServiceFactory : ServiceHostFactory
+    {
+        
+        static readonly Object ServiceLock = new object();
+        static bool IsInitialised;
+
+        protected override ServiceHost CreateServiceHost(Type serviceType, Uri[] baseAddresses)
+        {
+01          if (!IsInitialised) InitialiseService();
+            return base.CreateServiceHost(serviceType, baseAddresses);
+        }
+
+        private void InitialiseService()
+        {
+            lock (ServiceLock)
+            {
+                // check again ... cover for a race scenario
+                if (IsInitialised) return;
+                InitialiseDependecy();
+                IsInitialised = true;
+            }
+        }
+
+        private void InitialiseDependecy()
+        {
+            string spring = @&quot;file://&quot; + HttpRuntime.AppDomainAppPath + ConfigurationManager.AppSettings.Get(&quot;SpringConfigFile&quot;);
+            DiContext.AppContext = new XmlApplicationContext(spring);
+        }
+    }
+}
+</pre>
+<p>So at Line(01) when the service host is about to be created, the <code>InitialiseService</code> method is called which creates the Spring.Net container. There is not much more story in this project, the service classes are linked to this factory class using the service declaration statement:</p>
+<pre lang="xml">&lt;%@ ServiceHost Language=&quot;C#&quot; 
+                Debug=&quot;true&quot; 
+                Service=&quot;eDirectory.WcfService.CustomerWcfService&quot; 
+                CodeBehind=&quot;CustomerWcfService.svc.cs&quot; 
+                Factory=&quot;eDirectory.WcfService.ServiceFactory&quot; %&gt;
+</pre>
+<p>And the code behind could not be simplier:</p>
+<pre lang="cs">namespace eDirectory.WcfService
+{    
+    public class CustomerWcfService 
+        : CustomerService
+    {
+    }
+}
+</pre>
+<p>The last aspect is the WCF configuration settings: as with any other WCF solutions there is a little bit of effort in the setting of the configuration files. For the server we have:</p>
+<pre lang="xml">&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+    &lt;!-- Use the following configuration file to execute the client with memory entities--&gt;
+01  &lt;add key=&quot;SpringConfigFile&quot; value=&quot;ServerInMemoryConfiguration.xml&quot;/&gt;
+    &lt;!--&lt;add key=&quot;SpringConfigFile&quot; value=&quot;NhClientConfiguration.xml&quot;/&gt;--&gt;
+  &lt;/appSettings&gt;
+  
+  &lt;system.web&gt;
+    ...
+  &lt;/system.web&gt;
+	
+  &lt;system.serviceModel&gt;
+    &lt;services&gt;
+02    &lt;service name=&quot;eDirectory.WcfService.CustomerWcfService&quot; behaviorConfiguration=&quot;eDirectory.WcfServiceBehaviour&quot;&gt;
+        &lt;endpoint address=&quot;CustomerServices&quot; binding=&quot;basicHttpBinding&quot; bindingConfiguration=&quot;eDirectoryBasicHttpEndpointBinding&quot; contract=&quot;eDirectory.Common.ServiceContract.ICustomerService&quot; /&gt;         
+      &lt;/service&gt;
+    &lt;/services&gt;
+		&lt;behaviors&gt;
+			&lt;serviceBehaviors&gt;
+				&lt;behavior name=&quot;eDirectory.WcfServiceBehaviour&quot;&gt;
+					&lt;serviceMetadata httpGetEnabled=&quot;true&quot;/&gt;
+					&lt;serviceDebug includeExceptionDetailInFaults=&quot;true&quot;/&gt;
+				&lt;/behavior&gt;
+			&lt;/serviceBehaviors&gt;
+		&lt;/behaviors&gt;
+    &lt;bindings&gt;
+      &lt;basicHttpBinding&gt;
+        &lt;binding name=&quot;eDirectoryBasicHttpEndpointBinding&quot;&gt;
+          &lt;!--&lt;security mode=&quot;TransportCredentialOnly&quot;&gt;
+            &lt;transport clientCredentialType=&quot;Windows&quot;/&gt;
+          &lt;/security&gt;--&gt;
+        &lt;/binding&gt;
+      &lt;/basicHttpBinding&gt;
+    &lt;/bindings&gt;
+		&lt;serviceHostingEnvironment multipleSiteBindingsEnabled=&quot;true&quot;/&gt;
+	&lt;/system.serviceModel&gt;
+	&lt;system.webServer&gt;
+		&lt;modules runAllManagedModulesForAllRequests=&quot;true&quot;&gt;
+		&lt;/modules&gt;
+	&lt;/system.webServer&gt;
+&lt;/configuration&gt;
+</pre>
+<p>There is a little of noise in the above configuration file but it is not so bad. At Line(01) we indicate that we want to use the In-Memory repositories in the server side instead of the NHibernate ones. Line(02) declares the server endpoint for the Customer services, in this example, basicHttp is used but you could use anything else you want. The client also needs to be modified:</p>
+<pre lang="xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+01  &lt;add key=&quot;SpringConfigFile&quot; value=&quot;file://WcfConfiguration.xml&quot; /&gt;
+  &lt;/appSettings&gt;
+  &lt;system.serviceModel&gt;
+    &lt;bindings&gt;
+      &lt;basicHttpBinding&gt;
+        &lt;binding name=&quot;eDirectoryBasicHttpBinding&quot; /&gt;
+      &lt;/basicHttpBinding&gt;
+    &lt;/bindings&gt;
+    &lt;client&gt;
+02    &lt;endpoint address=&quot;http://localhost:40003/CustomerWcfService.svc/CustomerServices&quot;
+          binding=&quot;basicHttpBinding&quot;
+          contract=&quot;eDirectory.Common.ServiceContract.ICustomerService&quot; name=&quot;BasicHttpBinding_ICustomerService&quot;&gt;
+        &lt;identity&gt;
+          &lt;dns value=&quot;localhost&quot; /&gt;
+        &lt;/identity&gt;
+      &lt;/endpoint&gt;
+    &lt;/client&gt;    
+  &lt;/system.serviceModel&gt;
+&lt;/configuration&gt;
+</pre>
+<p>At Line(02) we declare the endpoint address that is defined by default on the eDirectory.WcfService web project, this is one value that you will need to change when the server components is deployed to a proper IIS environment. Line(01) indicates that the client is running in WCF mode, we need to have a quick look at this implementation as this is the production one:</p>
+<pre lang="xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;
+&lt;!--
+  WCF Configuration
+  =================
+--&gt;
+  &lt;objects xmlns=&quot;http://www.springframework.net&quot;&gt;
+
+    &lt;!-- CLIENT SERVICE LOCATOR --&gt;
+    &lt;object 
+            id=&quot;ClientServiceLocatorRef&quot; 
+            type=&quot;eDirectory.WPF.Services.ClientServiceLocator, eDirectory.WPF&quot;  
+            factory-method=&quot;Instance&quot; 
+            singleton=&quot;true&quot;&gt;
+      
+      &lt;property name=&quot;ContractLocator&quot; ref=&quot;ClientContractLocatorRef&quot; /&gt;
+    &lt;/object&gt;
+    
+    &lt;!-- Client Contract Locator --&gt;
+    &lt;object 
+            id=&quot;ClientContractLocatorRef&quot; 
+01          type=&quot;eDirectory.WPF.Services.ClientContractLocator, eDirectory.WPF&quot;&gt;
+      
+      &lt;property name=&quot;NextAdapterLocator&quot; ref=&quot;ContractLocatorRef&quot; /&gt;
+    &lt;/object&gt;
+    
+    &lt;!-- Next Adapter Locator --&gt;
+    &lt;object
+            id=&quot;ContractLocatorRef&quot;
+02          type=&quot;eDirectory.WPF.Services.Wcf.WcfContractLocator, eDirectory.WPF&quot; /&gt;
+
+  &lt;/objects&gt;
+</pre>
+<p>This is probably an small and tidy Spring.Net configuration file when we compare it to the NHibernate or the InMemory ones, the good news are that this is the production version. In this implementation we don't require any server assembly deployed on the client side any longer. At Line(02) is indicated that the <code>WcfContractLocator</code> is used in this application mode. This class has not been implemented yet and is the key for calling the WCF services. The client does not relay on WCF proxies auto generated by Visual Studio from a web reference, in fact the client does not have such a reference at all, for some people that could be surprising. Instead we build the proxies dynamically, the only code required is in a base class named <code>WcfAdapterBase</code>:</p>
+<pre lang="cs">namespace eDirectory.WPF.Services.Wcf
+{
+    public class WcfAdapterBase&lt;TContract&gt; where TContract: class, IContract
+    {
+01      private class WcfProxy&lt;TService&gt;:
+            ClientBase&lt;TService&gt; where TService : class, IContract
+        {
+            public TService WcfChannel
+            {
+                get
+                {
+02                  return this.Channel;
+                }
+            }
+        }
+
+03      protected TResult ExecuteCommand&lt;TResult&gt;(Func&lt;TContract, TResult&gt; command)
+            where TResult : IDtoResponseEnvelop
+        {
+04          var proxy = new WcfProxy&lt;TContract&gt;();     
+       
+            try
+            {
+05              var result = command.Invoke(proxy.WcfChannel);
+                proxy.Close();
+                return result;
+            }
+            catch (Exception)
+            {
+                proxy.Abort();
+                throw;
+            }
+        }
+    }
+}
+</pre>
+<p>This is another implementation where an &quot;Execute&quot; method is exposed, the signature of the method at this stage should be familiar so we will not discuss it. The most important aspect here is Line(04) were a client proxy is generated using the generic private <code>WcfProxy</code> class, at Line(05) we invoked the <code>command</code> delegate passing a reference to the private <code>Channel</code> of the <code>WcfProxy</code> instance, which is the main reason for the <code>WcfProxy</code> class to be created.</p>
+<p>For each service we need to create a class that inherits from this class and implements the contract interface, for our client services we have:</p>
+<pre lang="cs">namespace eDirectory.WPF.Services.Wcf
+{
+    public class CustomerServiceProxy
+        :WcfAdapterBase&lt;ICustomerService&gt;, ICustomerService
+    {
+        #region Implementation of ICustomerService
+
+        public CustomerDto CreateNewCustomer(CustomerDto customer)
+        {
+            return ExecuteCommand(proxy =&gt; proxy.CreateNewCustomer(customer));
+        }
+
+        public CustomerDto GetById(long id)
+        {
+            return ExecuteCommand(proxy =&gt; proxy.GetById(id));
+        }
+
+        public CustomerDto UpdateCustomer(CustomerDto customer)
+        {
+            return ExecuteCommand(proxy =&gt; proxy.UpdateCustomer(customer));
+        }
+
+        public CustomerDtos FindAll()
+        {
+            return ExecuteCommand(proxy =&gt; proxy.FindAll());
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>There is not so much going in the above code, as it can be seen the only purpose for the <code>CustomerServiceProxy</code> class is to delegate the execution to the <code>ExecuteCommand</code> method. The last piece of code is the <code>WcfContractLocator</code> which is also straight forward:</p>
+<pre lang="cs">namespace eDirectory.WPF.Services.Wcf
+{
+    public class WcfContractLocator
+        :IContractLocator
+    {
+        private ICustomerService CustomerServiceProxyInstance;
+
+        public ICustomerService CustomerServices
+        {
+            get 
+            {
+                if (CustomerServiceProxyInstance != null) return CustomerServiceProxyInstance;
+                CustomerServiceProxyInstance = new CustomerServiceProxy();
+                return CustomerServiceProxyInstance;
+            }
+        }
+    }
+}
+</pre>
+
+<p>At this stage we could try to execute the client against the server. Check the configuration for the client so it is set to use the Wcf mode. Set the eDirectory.WcfService as the &quot;start-up&quot; project and press Shift+F5, then change the eDirectory.WPF client to be the &quot;start-up&quot; project and press F5. If the client works, and hopefully that is the case, it is doing so using WCF. That is pretty much your application executing on production mode. Not too bad.</p>
+<h2>Request Implementation</h2>
+<p>At the beginning of the series we discussed the need for a Global and Request context at the server side; most of our services are global but when there is a need to store state for each request we are dealing with a service that needs to be handled by the Request context. What it needs to take place is that each time a request is processed on the server side, any service intended to be used on the Request context needs to be created. WCF extensibility provides an excellent framework for enhancements of this sort; in our case we will implement our own instance context extension. The following components are required when implementing this type of solution:</p>
+<ul>
+    <li>Implementation of the <code>IExtension</code>, in our case we'll call it: <code>InstanceCreationExtension</code></li>
+    <li>Implementation of the <code>IInstanceContextInitializer</code>, we'll name this one: <code>InstanceCreationInitializer</code></li>
+    <li>Create an attribute implementing <code>IContractBehavior</code>, in our case the attribute is call: <code>InstanceCreationAttribute</code></li>
+</ul>
+<p>In terms of responsibility:</p>
+<p>The <code>InstanceCreationExtension</code> is the key component as it holds an instance of the services that need to be created for the request. In our case it does create a <code>BusinessNotifier</code> instance.<br />
+The <code>InstanceCreationInitializer</code> is responsible for declaring which extensions need to be added to the intance context when a request is processed in the server side.<br />
+The <code>InstanceCreationAttribute</code> is the &quot;glue&quot; between our service implementations and our <code>InstanceCreationInitializer</code>
+</p>
+<p>Let see the implementations. The extension is simple, besides of the constructor, the implementation subscribes to the <code>InstanceContext.Closed</code> so some basic cleansing can be done when the request finishes:</p>
+<pre lang="cs">namespace eDirectory.Domain.AppServices.WcfRequestContext
+{
+    public class InstanceCreationExtension : IExtension&lt;InstanceContext&gt;
+    {
+        public DateTime InstanceCreated { get; private set; }
+        public BusinessNotifier Notifier { get; private set; }
+
+        public InstanceCreationExtension(DateTime instanceCreated)
+        {
+            InstanceCreated = instanceCreated;
+            Notifier = new BusinessNotifier();
+        }
+
+        #region IExtension&lt;InstanceContext&gt; Members
+
+        public void Attach(InstanceContext owner)
+        {
+            // Make sure we detach when the owner is closed
+            owner.Closed += (sender, args) =&gt; Detach((InstanceContext)sender);
+        }
+
+        public void Detach(InstanceContext owner)
+        {
+            Notifier = null;
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>There is not too much to say about the <code>InstanceCreationInitializer</code> implementation:</p>
+<pre lang="cs">namespace eDirectory.Domain.AppServices.WcfRequestContext
+{
+    public class InstanceCreationInitializer : IInstanceContextInitializer
+    {
+        #region IInstanceContextInitializer Members
+        
+        public void Initialize(InstanceContext instanceContext, Message message)
+        {
+            // Add extension which contains the new instance creation index
+            instanceContext.Extensions.Add(new InstanceCreationExtension(DateTime.Now));
+        }
+        
+        #endregion
+    }
+}
+</pre>
+<p>Then the attribute class is also simple:</p>
+<pre lang="cs">namespace eDirectory.Domain.AppServices.WcfRequestContext
+{
+    public class InstanceCreationAttribute : Attribute, IContractBehavior
+    {
+        #region IContractBehavior Members
+
+        public void AddBindingParameters(ContractDescription contractDescription, ServiceEndpoint endpoint, BindingParameterCollection bindingParameters)
+        {
+        }
+
+        public void ApplyClientBehavior(ContractDescription contractDescription, ServiceEndpoint endpoint, ClientRuntime clientRuntime)
+        {
+        }
+
+        public void ApplyDispatchBehavior(ContractDescription contractDescription, ServiceEndpoint endpoint, DispatchRuntime dispatchRuntime)
+        {
+            dispatchRuntime.InstanceContextInitializers.Add(new InstanceCreationInitializer());
+        }
+
+        public void Validate(ContractDescription contractDescription, ServiceEndpoint endpoint)
+        {
+        }
+
+        #endregion
+    }
+}
+</pre>
+<p>We also need to define a new implementation of the <code>IRequestContext</code> so our business code can resolve the service for the given request. It is worth noting that this should only be used when running WCF services, otherwise you may find some issues:</p>
+<pre lang="cs">namespace eDirectory.Domain.AppServices.WcfRequestContext
+{
+    public class RequestContext
+        : IRequestContext
+    {
+        public IBusinessNotifier Notifier
+        {
+            get
+            {
+                InstanceContext ic = OperationContext.Current.InstanceContext;
+                InstanceCreationExtension extension = ic.Extensions.Find&lt;InstanceCreationExtension&gt;();
+                return extension.Notifier;
+            }
+        }
+    }
+}
+</pre>
+<p>The last aspect is to modify our services so we indicate that the customised extension needs to be used:</p>
+<pre lang="cs">namespace eDirectory.Domain.Services
+{
+    [ServiceBehavior(InstanceContextMode = InstanceContextMode.PerCall)]
+    [InstanceCreation]
+    public class CustomerService
+        :ServiceBase, ICustomerService
+    {
+        ...
+    }
+}
+</pre>
+<p>Now when a WCF client calls any customer service method, the customised extension creates a new BusinessNotifier instance so we can store state at request level only, isolating requests from each other. You may find this pattern very useful for security, auditing or other tasks that need to be invoked at the start of each request.</p>
+<h2>Client Command Dispatcher - Async Commands</h2>
+<p>There is one client aspect that may become more obvious once we start dealing with WCF. When the client executes a service proxy, it is doing so using the UI thread, something that it is not a really good idea because it freezes the UI and if the request takes few seconds the user may not be a happy one for too long. As a result a re-factor of how the services are executed is needed. The <code>ServiceAdapterBase</code> class is a good candidate for adding the new code:</p>
+<pre lang="cs">namespace eDirectory.WPF.Services
+{
+    abstract class ServiceAdapterBase&lt;TService&gt; where TService: IContract
+    {
+        protected TService Service;
+
+        protected ServiceAdapterBase(TService service)
+        {
+            Service = service;
+        }              
+        
+        public TResult ExecuteCommand&lt;TResult&gt;(Func&lt;TResult&gt; command) where TResult : IDtoResponseEnvelop
+        {
+            try
+            {
+01              Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+                TResult result = DispatchCommand(command);
+                ...
+                return result;
+            }
+            finally
+            {
+02              Mouse.OverrideCursor = null;
+            }
+        }
+
+        private static TResult DispatchCommand&lt;TResult&gt;(Func&lt;TResult&gt; command)
+        {
+03          var asynchResult = command.BeginInvoke(null, null);
+            while (!asynchResult.IsCompleted)
+            {
+04              Application.DoEvents();
+                Thread.CurrentThread.Join(50);
+            }
+            return command.EndInvoke(asynchResult);
+        }
+    }
+}
+</pre>
+<p>After the re-factor, we can see that two new things are taking place: the mouse pointer changes when a method is executed and the command is executed in an asynchonous manner. The pointer is nicely handled in Lines(01 &amp; 02). The new <code>DispatchCommand</code> method executes the command and waits until it finishes, the Line(04) being an ugly solution, it does the trick. (Can anyone advise a better approach?)</p>
+<p>In the WPF classes when this new behavior is applied a new problem arises, when an action is executed there is nothing stopping the user from clicking in something else, this might not being the intended behavior so we need to handle some sort of state and then change the UI controls accordingly. For this purpose, a new field was added to the <code>CustomerModel</code> named <code>IsEnabled</code>. If this field is false (the Save button changes this state) then the &quot;New Customer&quot; groupbox and the &quot;Refresh&quot; button are disabled. We use XAML bindings instead of any code behind, code behind on the View must be always the last resource:</p>
+<pre lang="xml">&lt;Window x:Class=&quot;eDirectory.WPF.Customer.View.CustomerView&quot;
+        xmlns=&quot;http://schemas.microsoft.com/winfx/2006/xaml/presentation&quot;
+        xmlns:x=&quot;http://schemas.microsoft.com/winfx/2006/xaml&quot;
+        xmlns:tk=&quot;http://schemas.microsoft.com/wpf/2008/toolkit&quot;        
+        Title=&quot;Customer View&quot; Height=&quot;400&quot; Width=&quot;400&quot; WindowStartupLocation=&quot;CenterScreen&quot;&gt;
+    
+        ...
+        &lt;GroupBox Header=&quot;New Customer&quot; Margin=&quot;5&quot; Padding=&quot;5&quot; Grid.Row=&quot;0&quot; IsEnabled=&quot;{Binding Path=Model.IsEnabled}&quot;&gt;
+        ...
+        &lt;Button Grid.Row=&quot;1&quot; Padding=&quot;5&quot; Margin=&quot;5&quot; Command=&quot;{Binding RefreshCommand}&quot; IsEnabled=&quot;{Binding Path=Model.IsEnabled}&quot;&gt;Refresh&lt;/Button&gt;
+        ...
+</pre>
+<h2>Chapter Summary</h2>
+<p>This chapter sets a major milestone in the series, besides some minor aspects we have covered the bulk of the components that an standard enterprise application requires. The series does not intent to be the best example for an WPF solution, nor the best example of an NHibernate integration; however demonstrates how three main enterprise frameworks can be integrated following best practices for RAD, TDD and DDD.</p>
+<p>In the next chapter we will re-factor the business domain so a parent-child relationship is created, this implies a more complex UI, a new service and few changes in the domain.</p>
+<p>We would appreciate feedback where we should conduct the series in the next future, we could cover aspects like validation, implementation of business warnings and exceptions in the client side, maybe client report services using DTOs. But all those may not be that relevant for most people, maybe, instead, we could look into a SilverLight client.</p>

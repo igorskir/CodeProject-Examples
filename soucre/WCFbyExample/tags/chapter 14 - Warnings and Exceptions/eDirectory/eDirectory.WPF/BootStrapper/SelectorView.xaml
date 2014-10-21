@@ -1,0 +1,29 @@
+﻿<Window x:Class="eDirectory.WPF.BootStrapper.SelectorView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+        xmlns:BootStrapper="clr-namespace:eDirectory.WPF.BootStrapper" Title="eDirectory - Selector" Height="175" Width="300" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <BootStrapper:EnumMatchToBooleanConverter x:Key="enumConverter" />
+    </Window.Resources>
+    <Grid>
+        <StackPanel>
+            <GroupBox Header="Options" Margin ="5" Padding="5" Grid.Row="0">
+                <StackPanel>
+                    <RadioButton Margin="6" 
+                                 GroupName="ViewType" 
+                                 IsChecked="{Binding Path=CurrentOption, Mode=TwoWay, Converter={StaticResource enumConverter},
+                                 ConverterParameter=CustomerView}">Basic customer view</RadioButton>
+
+                    <RadioButton Margin="6" 
+                                 GroupName="ViewType" 
+                                 IsChecked="{Binding Path=CurrentOption, Mode=TwoWay, Converter={StaticResource enumConverter},
+                                 ConverterParameter=CustomerAddressView}">Customer with address view</RadioButton>
+                    
+                </StackPanel>
+            </GroupBox>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button Width="100" IsDefault="True" Command="{Binding Path=OkCommand}">Ok</Button>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

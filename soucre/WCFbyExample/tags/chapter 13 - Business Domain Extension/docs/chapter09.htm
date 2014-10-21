@@ -1,0 +1,139 @@
+﻿<table width="100%" border="0">
+<tbody>
+<tr>
+<td width="33%" align="left"><a href="wcfbyexample_chapter08.aspx"><img complete="true" border="0" src="wcfbyexample_introduction/previous.gif" alt="Previous" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td width="33%" align="left">Chapter VIII</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a href="wcfbyexample_introduction.aspx" title="WCF by Example - Introduction">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level.</p>
+<h2>Chapter overview</h2>
+<p>In the previous chapter we introduced the Relay Command and we demostrated how the Views using bindings in the XAML could easily invoke service methods. We also found a problem where the ViewModel was not notifying the View of 
+    the updates that took place in our Model as consucuence of invoking the customer service. In this chapter we will discuss 
+    a pattern that leverages the notifycation of Model changes to the View.</p>
+<p>The source code for this chapter can be found at <a href="http://wcfbyexample.codeplex.com/SourceControl/changeset/changes/73741"> Codeplex change set 73741</a>. The latest code for the eDirectory solution is found at <a href="http://wcfbyexample.codeplex.com/SourceControl/list/changesets">Codeplex</a>.</p>
+<h2>The INotifyPropertyChanged interface</h2>
+<p>The <code>INotifyPropertyChanged</code> can be used by DataContext instances to notify the XAML View that a property has changed. The interface is quite simple, it just exposes an event named "PropertyChanged", the View subscribes to this event so it can be notified when the event is triggered. 
+    If we examine the event handler we see that it requires an object, in our case the ViewModel, and the name of property that has changed, 
+    this is passed as an string.</p>
+<p>We could implement this interface in each of our ViewModel classes, but a better approach is to provide a base class that includes this function and a common implementation so it can be easily re-used.</p>
+<h2>The ViewModelBase Abstract Class</h2>
+<table>
+<tr>
+<td><img src="wcfbyexample_chapter09/ViewModelBase.png" /></td>
+<td><p>The <code>ViewModelBase</code> abstract class implements the <code>INotifyPropertyChanged</code> which provides an easy mechanism for 
+    the ViewModel classes to indicate when the Model property has changed. The ViewModel is assigned as the View's <code>DataContext</code> in the ViewModel contructor as it can see bellow at line 01:</p>
+<pre lang="cs">
+
+    public class CustomerViewModel
+        : ViewModelBase
+    {
+        public CustomerViewModel()
+        {            
+            CustomerServiceInstance = ClientServiceLocator.Instance().ContractLocator.CustomerServices;
+            Refresh();
+01          View = new CustomerView { DataContext = this };
+            View.ShowDialog();
+        }
+        
+        ...
+
+    }
+</pre>
+<p>So when the Model changes we need to invoke the <code>RaisePropertyChanged</code> in the base class. There are many implementation 
+    examples of&nbsp; this pattern on the web, the most common implementation is to pass the property name in a string parameter. 
+    But if the property is renamed or removed as a result of some re-factor we need 
+    to remember to update the code raising the event, this approach might not be the 
+    most adecuate so in our solution we provide a overloaded method that uses lambda 
+    expressions and avoid the mentioned issue at compile time.</p>
+</td>
+</tr>
+</table>
+<p>The <code>ViewModelBase</code> implementation is as follows:</p>
+<pre lang="cs">
+
+ public class ViewModelBase
+        :INotifyPropertyChanged
+    {
+01      public event PropertyChangedEventHandler PropertyChanged = delegate { return; };
+
+02      protected void RaisePropertyChanged(string propertyName)
+        {
+            VerifyPropertyExists(propertyName);
+            PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+03      protected void RaisePropertyChanged&lt;T&gt;(Expression&lt;Func&lt;T&gt;&gt; expression)
+        {
+            var memberExpression = expression.Body as MemberExpression;
+
+            if (memberExpression == null)
+                throw new ArgumentException("expression must be a property expression");
+
+            RaisePropertyChanged(memberExpression.Member.Name);
+        }
+
+        [Conditional("DEBUG")]
+04      private void VerifyPropertyExists(string propertyName)
+        {
+            PropertyInfo currentProperty = GetType().GetProperty(propertyName);
+            string message = string.Format("Property Name \"{0}\" does not exist in {1}", propertyName, GetType());
+            Debug.Assert(currentProperty != null, message);
+        }
+    }
+</pre>
+<p>The implementation of the <code>INotifyPropertyChanged</code> is being done in a single line (line 01). 
+    We use here a a trick so we don't have to check if the event handler is null 
+    notifing the event subscribers.</p>
+<p>The method in line 02 is the common implementation of the <code>RaisePropertyChanged</code> pattern, a helper method (line 04) is used to notify if the property exists. The method in line 03 is 
+    an enhanced&nbsp; approach, the one mentioned before, that removes the need to 
+    pass properties names in strings.</p>
+<h2>The Implementation</h2>
+<p>Just a minor change in our <code>CustomerViewModel</code> is required to get it working 
+    with the new abstract class, with two lines we will have our application working.</p>
+
+<pre lang="cs">
+
+    public class CustomerViewModel
+01      : ViewModelBase
+    {
+
+        ...
+
+        private void Refresh()
+        {
+            var result = CustomerServiceInstance.FindAll();
+            Model = new CustomerModel() 
+                        { 
+                          NewCustomerOperation = new CustomerDto(), 
+                          CustomerList = result.Customers
+                        };
+            
+02          RaisePropertyChanged(() =&gt; Model);
+        }
+    }
+</pre>
+<p>The first change is that <code>CustomerViewModel</code> now inherits from <code>ViewModelBase</code> (line 01), 
+    easy. The other change is when we want to notify the View that the Model has changed, 
+    this occurs when the <code>FindAll</code> method is called in the <code>Refresh</code> method. Line 02 indicates how this is achieved, a lambda expression is used to indicate which property of the ViewModel has been updated, 
+    in our case, Model. This is the only thing the View requires to be refreshed.</p>
+<p>If we now execute the client and we enter some customer details like we did in the previous chapter, this time when the Save button is pressed we can see how the client is refreshed and it displays the correct data in the grid. It is worth noting how 
+    the application looks after the New Customer controls, the <code>Refresh</code> method assigns a new blank instance of <code>CustomerDto</code> to the <code>Model.NewCustomerOperation</code> property which automatically resets the entered values, isn't it nice?</p>
+<img src="wcfbyexample_chapter09/joebloggs.png" />
+<h2>Chapter Summary</h2>
+<p>There is not more to discuss about the <code>INotifyPropertyChanged</code> pattern, it is simple and slick, which is good news. At this point we have our application running. This is a major milestone in our series, it means we are in a possition to demostrate to our client our work; we are ready to engage them in an effective and productive manner; 
+    we are now in a possition so workshops with the key users can be proposed to demostrate the new functionality. Try to convice them to use the application, as we 
+    mentioned they can execute the application from a USB stick if required, it could not be 
+    any easier. An if you are lucky they might start logging defects and enhancements in your ticket system. You may get busy at this stage but 
+    be sure, you will get no major susprises for when the project reaches the UAT stage.</p>
+<p>The next chapter is critical in the design of our application, Dependency Injection 
+    will be introduced in our solution. We need to remove the references to the server components in our client. Once we cover DI we will be ready for covering the NHibernate and the WCF 
+    implementations. But remember, we don't need those two to gather the business requirements in an effective manner.</p>

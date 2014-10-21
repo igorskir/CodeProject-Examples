@@ -1,0 +1,149 @@
+﻿<table border="0" width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a href="wcfbyexample_chapter09.aspx"><img border="0" alt="Previous" src="wcfbyexample_introduction/previous.gif" complete="true" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td align="left" width="33%">Chapter IX</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+<p>An appendix section has been added explaining how to get the client application running.</p>
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a title="WCF by Example - Introduction" href="wcfbyexample_introduction.aspx">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+<h2>Chapter overview</h2>
+<p>At this stage, the series have covered how we have put together the baseline for our application so we can start demonstrating functionality to our clients and gather feedback from our stakeholders and product owners. As we have explained in previous chapters, the In-Memory implementation proves to be a valuable approach for RAD and TDD methodologies postponing the development of other more expensive back-end infrastructure components for a later stage when the business domain is more stable.</p>
+<p>In this chapter we will explain how to leverage Dependency Injection in our design providing the perfect mechanism for testing, developing and business exploring. Currently the Client application has references to assemblies that we don't intent to deploy along with the client in a production environment. We are going to use Spring.Net in combination with the already introduced ServiceLocator pattern to remove these hard-coded references from the Client, we will also use this mechanism in the test project. In a later chapter we will demonstrate how this design facilitates the introduction of the persistence and communication components.</p>
+<p>We will also spend sometime introducing DI in our tests with the purpose of being able to execute our test cases using both the in-memory or NHibernate repositories without any changes in our test logic.</p>
+<h2>Review</h2>
+<p>Currently we are executing the application in one single process where the 
+    client, server and in-memory components are all tightly coupled as the client 
+    application has references to assemblies that will not be deployed along with the client in a production environment. The following diagram indicates at a high level the main components used when the in-memory client is executed:</p>
+<img src="wcfbyexample_chapter10/eDirectory.png" />
+<p>We need to provide a mechanism so we can &quot;inject&quot; the above implementations but at the same time ensuring that the client project does not keep a reference to assemblies that will not be deployed along on the production environment.</p>
+<h2>Spring.Net Container</h2>
+<p>We will use DI in both the client and server side so we will create a &quot;holder&quot; class named <code>DiContext</code> for the Spring.Net container in the common assembly:</p>
+<pre lang="cs">
+    public class DiContext
+    {
+        public static XmlApplicationContext AppContext { get; set; }
+    }
+</pre>
+<p>As a result, we need to add two references to our assembly:</p>
+<img src="wcfbyexample_chapter10/Spring_references.png" />
+<h2>Re-factor the Client</h2>
+<p>The WCFClient contains a class to initialise dependencies called <code>eDirectoryBootStrapper</code>, it is in here where the client indicates the implementation instances for the above mentioned components. We are going to replace this code by setting up the Spring container. From the App.config file we will obtain the Spring file name and then use it to set the container, bellow is the code before and after the re-factor:</p>
+<img src="wcfbyexample_chapter10/eDirectoryBootStrapper.png" />
+<p>There are not more changes required at the Client side, the only thing left is to set the App.config file and the Spring file. The App.config looks like:</p>
+<pre lang="xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;
+&lt;configuration&gt;
+  &lt;appSettings&gt;
+    &lt;add key=&quot;SpringConfigFile&quot; value=&quot;file://InMemoryConfiguration.xml&quot; /&gt;
+  &lt;/appSettings&gt;
+&lt;/configuration&gt;
+</pre>
+<h2>InMemory Spring Configuration File</h2>
+<p>We are going to discuss briefly the spring configuration file from our application perspective covering the most common scenarios in declaring DI Spring.Net files. However you might want to check the reference <a href="http://www.springframework.net/doc-latest/reference/html/index.html">documentation</a> which we find quite good. A good practice when working with configuration files in VS is to set the <code>schemas</code> property to the spring.net schema definition file:</p>
+<img src="wcfbyexample_chapter10/spring schema file.png" />
+<p>We need to configure the <code>ClientServiceLocator</code> indicating that it is 
+    going to a singleton and the method to use for Spring.Net to create an instance of the class. 
+    We also indicate that the <code>ContractManager</code> property is set with the instance 
+    declared at <code>ContractManagerRef:</code></p>
+<img src="wcfbyexample_chapter10/clientservicelocator.png" />
+<p>It is worth noting that Spring.Net is capable of setting the reference for the <code>ContractManager</code> property even if the setter is private; which is a nice mechanism to ensure services are only injected by the DI infrastructure. The <code>ContractManager</code> is declared as follows:</p>
+<img src="wcfbyexample_chapter10/contractmanager.png" />
+<p>The <code>NextAdapterLocator</code> is another reference that needs to be injected, this is where we reference a server component for the first time.</p>
+<img src="wcfbyexample_chapter10/contractlocator.png" />
+<p>As it can see above this component does not need to reference any other service/component; unfortunately for us, this service implementation relays on setting up the <code>GlobalContext</code> properly. If we were to run the application at this point without setting up the GlobalContext, the following exception would be thrown:</p>
+<img src="wcfbyexample_chapter10/exception.png" />
+<p>Lets define the <code>Container</code> in the server side:</p>
+<img src="wcfbyexample_chapter10/servercontainer.png" />
+<p>The <code>Container</code> only exposes static properties so we don’t need a factory-method, Spring.Net permits injecting static references like the <code>RequestContext</code> static property:</p>
+<img src="wcfbyexample_chapter10/requestcontext.png" />
+<p>And the last thing to do is to declare the <code>GlobalContext</code> and the <code>TransactionManagerFactory</code>:</p>
+<img src="wcfbyexample_chapter10/globalcontext.png" />
+<p>And now the <code>TransFactory</code> reference needs to be added, in the InMemory mode we use the Naive implementation (by the way, we are renaming these classes in this chapter so the suffix &quot;EntityStore&quot; has been replaced by &quot;InMemory&quot;):</p>
+<img src="wcfbyexample_chapter10/transfactory.png" />
+<h2>Project Tidy-up</h2>
+<p>At this point we can remove the references in the WPFClient:</p>
+<img src="wcfbyexample_chapter10/removereferences.png" />
+<p>We need some sort of mechanism so the server and naive assemblies are deployed to the bin folders before we can execute the application. We are going to keep it simple and use the build events within the Visual Studio projects. The first step is to copy the assemblies to a common folder called eDirectory located at the libs folder (this is a good practice anyway); the the second step is to copy the assemblies in that folder to the bin folder when the client is compiled. Bellow we can see how the Naive project has been modified so it copies the assembly to the mentioned folder:</p>
+<img src="wcfbyexample_chapter10/naiveproperties.png" />
+<p>We don't want to copy these assemblies by default, only when we are running the InMemory client we will require them. So we are going to create a new configuration called &quot;InMemory&quot;:</p>
+<img src="wcfbyexample_chapter10/inmemoryconfiguration.png" />
+<p>Now we can change the build events for the client to copy the assemblies if the project is compiled using the &quot;In-Memory&quot; configuration. The following script is executed:</p>
+<pre code="vb">IF $(ConfigurationName) == InMemory copy &quot;$(SolutionDir)..\libs\eDirectory\eDirectory.Domain.*&quot; &quot;$(TargetDir)&quot; /Y
+IF $(ConfigurationName) == InMemory copy &quot;$(SolutionDir)..\libs\eDirectory\eDirectory.Naive.*&quot; &quot;$(TargetDir)&quot; /Y
+</pre>
+<h2>Re-Factor of Tests</h2>
+<p>We need to re-factor the tests so DI is used when they are executed, as we indicated some setters are private to avoid misused of the services, this proves to break the compilation of our tests; also, articulating DI in our tests make very easy to run the same tests against different service implementations which proves to be beneficial. We will see in later chapters how we can execute the same test against In-Memory and NHibernate repositories just changing our DI configuration.</p>
+<p>The best approach is to think that our tests are just another type of client; as a result, we need some sort of boot-strapper, similar to the one in the client side, that can be used to initialise the Spring.Net container and set up our services. In the test case we will create a new class named <code>TestBootStrapper</code> that uses the <code>AssemblyInitialize</code> attribute:</p>
+<img src="wcfbyexample_chapter10/testbootstrapper.png" />
+<p>Couple things to mention about using this approach; to get the method working properly, the class needs to be tagged with the <code>TestClass</code> attribute and the method needs to be static accepting a <code>TestContext</code> parameter. This method is only executed once when the tests are run.</p>
+<p>We need to add the same Spring.Net references that we used for the client and reference the Spring.Net configuration file. We are using a little trick to share the files across multiple projects, you might want to look at the project file to see how it is achieved. The App.config needs to be changed in the same manner that the client file was. The <code>TestBootStrapper</code> ends like:</p>
+<img src="wcfbyexample_chapter10/testbootstrapper_implementation.png" />
+<p>If we recall, the service tests initialise the services in the constructor:</p>
+<img src="wcfbyexample_chapter10/servicetest_before.png" />
+<p>With the Spring.Net container we can simplify the code to be just:</p>
+<img src="wcfbyexample_chapter10/servicetest_after.png" />
+<p>It does not look like a big deal but the fact that our tests delegates to Spring.Net to set up the services proves to be very beneficial as we said before, from now on we don't need to change more code if we need our tests to execute different implementations.</p>
+<p>If we run the tests at this stage, the following results are retrieved:</p>
+<img src="wcfbyexample_chapter10/testexecution_bef.png" />
+<p>The reason why the <code>CheckFindAllNotication</code> test is falling is due to the fact that the execution of or tests are impacting in other tests. The In-Memory repositories are not re-created when the next tests execute so the customer instances are kept in memory between the test executions, this is not good at all. To prove it, if we run the failed test alone, it passes; it is only when multiple tests are executed that the test fails. To resolve this problem we need to create a base class for our tests that ensures that the in-memory repositories are reset at the end of a test execution.</p>
+<pre lang="cs">
+    [TestClass]
+    public abstract class eDirectoryTestBase
+    {
+        [TestInitialize]
+        public virtual void TestsInitialize()
+        {
+            
+        }
+
+        [TestCleanup]
+        public virtual void TestCleanUp()
+        {
+            ResetLocator();
+        }
+
+        private static void ResetLocator()
+        {            
+            using (ITransManager manager = GlobalContext.Instance().TransFactory.CreateManager())
+            {
+                manager.ExecuteCommand(locator =&gt;
+                                           {
+                                               var resetable = locator as IResetable;
+                                               if (resetable == null) return null;
+                                               resetable.Reset();
+                                               return new DtoResponse();
+                                           });
+            }
+        }
+    }
+</pre>
+<p>The code is simple, when the test finishes it invokes the <code>ResetLocator</code> method which calls the <code>Reset</code> method in the Locator; the in-memory implementation implements this interface:</p>
+<img src="wcfbyexample_chapter10/repositorylocatorinmemory.png" />
+<p>The implementation is straight forward, it just discards the old repository. The only thing left is to ensure that our test inherit from the new base class:</p>
+<img src="wcfbyexample_chapter10/customerservicetests.png" />
+<p>If the tests are executed once more, we can see the all of them are passing:</p>
+<img src="wcfbyexample_chapter10/alltestsaregreen.png" />
+<h2>Chapter Summary</h2>
+<p>In this chapter we saw how we eliminated the references in the client application to server and naive components using Spring.Net DI; we also spent some time re-factoring the tests so they also use DI in the same fashion. We have demonstrated how DI enhances our code and provides a sleek mechanism when using different implementations.</p>
+<p>In the next two chapters we will introduce the NHibernate and WCF components; we will see how DI facilitates a transparent implementation between the new components and those ones that we have already covered in the previous chapters.</p>
+<p>The next chapter covers the implementation of NHibernate repositories and explains how we can easily switch our tests to run against a database without changes in our tests; this approach proves to be very beneficial as we can quickly run our test in-memory as we are written code, a continuous integration environment could then execute the same tests using NHibernate and a database. Nice, isn't it?</p>
+<h2>Appendix - Set the In-Memory Configuration</h2>
+<p>There are few steps to follow to get the eDirectory.WPF client project working using the in-memory configuration:</p>
+<ul>
+    <li>Create new custom configuration: InMemory</li>
+    <li>Add script to the project build events</li>
+    <li>Set the project dependencies</li> 
+</ul>
+<p>If you get the latest version at the Chapter X branch the above steps are done for you. Following we explain how to set the correct configuration before you execute the client application.</p>
+<p>Set the eDirectory.WPF as the 'StartUp Project' and then set the custom 'InMemory' configuration:</p>
+<img src="wcfbyexample_chapter10/appendix_setconfiguration.png" />
+<p>You just need to start the application, the server and naive project are compiled in first place and the assemblies are copied to the libs folder. Once the client finishes the compilation, the build event scripts copies the server and naive assemblies to the client bin folder. It is worth noting that although we don't have a reference to the server and naive components we can indicate that a dependecy between the projects exist so they are build in the correct order, VS allows to modify this setting using the project dependency property:</p>
+<img src="wcfbyexample_chapter10/appendix_setprojectdependencies2.png" />

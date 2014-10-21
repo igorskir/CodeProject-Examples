@@ -1,0 +1,197 @@
+<table border="0" width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a href="wcfbyexample_chapter13.aspx" önclick="return (false);"><img border="0" src="wcfbyexample_introduction/previous.gif" alt="Previous" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td align="left" width="33%">Chapter XIII</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a href="wcfbyexample_introduction.aspx" title="WCF by Example - Introduction">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+<h2>Chapter overview</h2>
+<p>This is a two part chapter that covers the validation in WPF views and the management of business exceptions and warnings in the client side. For the validation topic, we will discuss how to provide comprehensive validation functionality all the way from the UI layers back to the server side, for the warnings and exceptions, 
+    the application will provide a customised exception handling mechanism for both 
+    client exceptions and business exceptions returned by the server methods; for 
+    the business notifications we will put in place a nice and slick notification feature 
+    that uses balloon notification messages in the Windows Task Bar.</p>
+    <p style="font-weight: 700;">Only the first part of this chapter, the validation, is included so far, we will amend the chapter with the second part as soon as possible.</p>
+<h2>Validation - DTO Implementation</h2>
+<p>We haven't covered validation in WPF in the series so far, maybe the reason for 
+    so it is to do with the fact that WPF validation is not that straight forward. 
+    We are going to describe what we consider to be a comprehensive solution given 
+    our application design. The eDirectory's solution is a hybrid one where a rich UI experience is provided but the validation code is not placed in the business entity, instead the DTO class is used for that purposes. In a nutshell, the following 
+    is an example of the type of validation functionality that is achieved in this manner:</p>
+<img src="wcfbyexample_chapter14/customer_validation.png" />
+<p>In order to provide the above functionality the following steps are required:</p>
+<ul>
+    <li>The DTO class needs to inherit from a new base class: <code>ValidatorDtoBase </code></li>
+    <li>DataAnnotation attributes are added to the DTO properties for validation purposes</li>
+    <li>XAML Binding needs to be amended with the following:
+        <ol>
+            <li>Mode = TwoWay</li>
+            <li>ValidatesOnDataErrors = True</li>
+            <li>Validation.ErrorTemplate is set to the validationTemplate</li>
+        </ol>
+    </li>
+    <li>Command buttons can bind to the IsValid property in the DTO for enabling/disabling purposes</li>
+</ul>
+<p>As an example of how the DTOs will look after the above indicated changes, the <code>CustomerDto</code> looks like:</p>
+<img src="wcfbyexample_chapter14/customer_dto.png" />
+<p>And the following is a section of the XAML that was changed:</p>
+<img src="wcfbyexample_chapter14/customer_details_xaml.png" />
+<p>And the last change is in the ViewModel so the Save button is enabled only when there are not validation errors:</p>
+<img src="wcfbyexample_chapter14/customer_details_viewmodel.png" />
+<h3>Validation Design Discussion</h3>
+<p>Before we continue, lets stop for a second to discuss what goals we tried to achieve with the above mentioned solution:</p>
+<ul>
+    <li>Follow the DRY principle</li>
+    <li>Easy to test</li>
+    <li>It should be possible to execute the validation both in the server and the client side</li>
+</ul>
+<p>Regarding the DRY principle, on paper, the business entity should be responsible for the business validation, in the case of the eDirectory 
+    Customer class, for example, the First Name field is not nullable and cannot be longer than 50 chars. This is 
+    a classic example of validation that should be defined on the entity itself. It is feasible placing this validation on the entity but it generates a sort of crude validation solution where the client needs to call the server to find out if there is validation errors. On some projects this is acceptable and it may result in being the best approach as it facilitates testing 
+    and rapid development.</p>
+<p>The eDirectory application proposes a solution where simple validation can be declared in the DTO object so WPF validation can be used in the client side, the entity can also use this validation in the server side. We are basing this solution in the following articles:</p>
+<table>
+    <tbody><tr>
+        <td><a href="http://www.codeproject.com/KB/smart/WPF_Validation_Attribute.aspx">Attributes-base Validation in a WPF MVVM</a></td>
+        <td>In this article the IDataErrorInfo interface is used in combination with validation attributes in the ViewModel classes. We used the logic in the back-end to retrieve validation attributes and getters using LINQ queries. This concept was originally covered on the <a href="http://weblogs.asp.net/marianor/archive/2009/04/17/wpf-validation-with-attributes-and-idataerrorinfo-interface-in-mvvm.aspx ">WPF Validation with Attributes and IDataErrorInfo in MVVM</a> post
+        </td>
+    </tr>
+    <tr>
+        <td><a href="http://www.codeproject.com/KB/WPF/wpf_custom_validation.aspx">Automatically validating business entities in WPF using custom binding and attributes</a></td>
+        <td>This is an interesting article by Sandrino Di Mattia based on the work done by Phillipp Sumi on WPF custom binding. In this solution a custom WPF binding is used for validation purposes, the eDirectory solution is very similar but it is developed around standard classes without requiring additional implementation. Still, it is a very good article.</td>
+    </tr>
+    <tr>
+        <td><a href="http://www.codeproject.com/KB/WPF/wpfvalidation.aspx">Validation in Windows Presentation Foundation</a>
+        </td>
+        <td>This is a four year old article that still applies, it is surprising how little things have changed since then, maybe MS is 
+            trying to say to all of us that is time to move to the mighty SilverLight :)
+        </td>
+    </tr>
+    <tr>
+        <td><a href="http://www.silverlight.net/learn/whitepapers/introducing-new-inotifydataerrorinfo-interface/">Implementing Data Validation in Silverlight with INotifyDataErrorInfo</a></td>
+        <td>This article covers the use of INotifyDataErrorInfo in silverlight. It is a good article, discussing the limitations of the IDataErrorInfo interface 
+            and covering some of the internals of how controls interacts with the validation code.
+</td>
+    </tr>
+</tbody></table>
+<p>Before we move on, if you are one of those that like DDD and find frustrating to locate the validation outside the business entities. It may be the time to look at frameworks that resolve this 
+    type of issue in a better way:</p>
+<ul>
+    <li><a href="http://nakedobjects.net/video/video_list.shtml">NakedObjects.Net</a></li>
+    <li><a href="http://www.lhotka.net/cslanet/Info.aspx">CSLA</a></li>
+</ul>
+<h2>IDataErrorInfo &amp; Validation Attributes Implementation</h2>
+
+<table>
+    <tbody><tr>
+        <td><img src="wcfbyexample_chapter14/ValidatorDtoBase.png" />
+        </td>
+        <td valign="top">
+            <p>The eDirectory solution is based on the proposed idea on the <a href="http://weblogs.asp.net/marianor/archive/2009/04/17/wpf-validation-with-attributes-and-idataerrorinfo-interface-in-mvvm.aspx">WPF Validation with Attributes and IDataErrorInfo interface in MVVM</a> post 
+                and it states:</p>
+<p><em>WPF provides validation infrastructure for binding scenarios through IDataErrorInfo interface. Basically you have to implement the Item[columnName] property putting the validation logic for each property in your Model (or ModelView) requiring validation. From XAML you need to set ValidatesOnDataErrors to true and decide when you want the binding invoke the validation logic (through UpdateSourceTrigger). Then idea is to generalize the validation logic in IDataErrorInfo.Item[] using the validation attributes in System.ComponentModel.DataAnnotations assembly.</em></p>
+            <p>So we can have a new base class that inherits from DtoBase and implements the <code>IDataErrorInfo</code> interface so the WPF control can be notified if there was a validation error. The base class delegates to an instance of DataErrorInfo 
+                which is responsible for gathering the properties that are tagged with validation attributes and invokes the validation when the IDataErrorInfo methods are executed.</p>
+            <img src="wcfbyexample_chapter14/DataErrorInfoClass.png" />
+            <p>It is worth noting that both the <code>ValidatorDtoBase</code> and <code>DataErrorInfo</code> implement the <code>IDataErrorinfo </code>
+                interface and that the first one merely delegates into the second class when the methods are invoked.</p>
+        </td>
+    </tr>
+</tbody></table>
+<img src="wcfbyexample_chapter14/DataErrorInfo.png" />
+<p>There is one aspect on this class that can be improved in terms of performance, your Dtos will not change at run time so it probably makes sense to store the validator and property maps the first time that they are created. This will result in 
+    a performance improvement although you will have to watch out for synchronization issues and locking.</p>
+<h2>Server side validation</h2>
+<p>As we indicated at the start of this chapter, one of our goals is to be able to check for validation errors 
+    at the server side as well. With the proposed solution is relatively easy to achieve 
+    this requirement. For example, when the Customer.Create method is invoked the following code has been added:</p>
+<img src="wcfbyexample_chapter14/Customer_Create_Method.png" />
+<p>The <code>ValidateOperation</code> method is declared in the base class: <code>EntityBase</code>, this method check for validation errors in the DTO, throwing a business exception if any error is found:</p>
+<img src="wcfbyexample_chapter14/EntityBase.png" />
+<h2>XAML Error Templates</h2>
+<p>WPF provides very basic support for validation errors on the views, however with 
+    some few changes we can provide a richer experience. Our solution provides three 
+    different mechanisms: red border around the textbox control, validation error 
+    symbol and tooltip.</p>
+<table>
+    <tbody><tr>
+        <td><img src="wcfbyexample_chapter14/xaml_validation.png" /></td>
+        <td valign="top">
+            <p>For the red border and the validation error symbol a control template was created named <code>validationTemplate</code>, for the tooltip a custom style was created for the TextBox control. Both declarations were added to <code>Application.resources</code> at the App.xaml file.</p>
+            <p>For the tooltip to be shown no further action is required. However, we need to indicate in each control that we want to use the <code>validationTemplate</code> in the XAML. You may prefer to move this template to an style instead, the following article explains how to do it: <a href="http://japikse.blogspot.com/2009/07/idataerrorinfo-error-templates-and-wpf.html">IDataErrorInfo, Error Templates and WPF</a></p>
+        </td>
+    </tr>
+</tbody></table>
+<p>The XAML for the template and style is as follows:</p>
+<img src="wcfbyexample_chapter14/xaml_declaration.png" />
+<h2>Business Exception Management</h2>
+<p>We have covered in previous chapters business warnings and exceptions in the server side, this section of this chapter covers for the client side, specificly how the client application notifies the user of those events.  We are going to display a modal screen indicating the user of any exception and ensuring that the client application stops any processing. For the business warnings, instead, a notify icon will be available that will inform the user using info balloons on the Windows taskbar.</p>
+<h3>Trapping all exceptions in a WPF application</h3>
+<p>It is relatively easy to catch all unhandle exceptions in WPF:</p>
+<img src="wcfbyexample_chapter14/AttachEventHandler.png" />
+<p>The handler implementation creates a new Notifier view and sets the <code>Handled</code> property to indicate the application that the exception was managed.</p>
+<img src="wcfbyexample_chapter14/HandlerImplementation.png" />
+<p>The view is quite simple, a left section for an image, the right panel is used for displaying the exception details. Couple buttons permit to copy the whole exception and call stack to the clipboard and close the window.</p>
+<img src="wcfbyexample_chapter14/ExceptionNotifierView.png" />
+<p>There is nothing special regarding the new view and controller that we haven't seen before:</p>
+<img src="wcfbyexample_chapter14/NotifierClasses.png" />
+<p>At this point we have a new mechanism that ensures all exceptions are well managed, for example,  if an exception was to be generated during the client processing the following screen is displayed:</p>
+<img src="wcfbyexample_chapter14/exampleException.png" />
+<img src="wcfbyexample_chapter14/exampleException2.png" />
+<h3>Business Exceptions - client implementation</h3>
+<p>We need to leverage the new ExceptionNotifier with the Business Exceptions retrieved from the server responses. In first place we need to revise the code at the ServiceAdapterBase class, the ExecuteCommand is the correct location for adding the new functionality. Currently the method looks like:</p>
+<img src="wcfbyexample_chapter14/ServiceAdapterBaseBef.png" />
+<p>We just need to call the new ExceptionNotifier implementation, a first implementation could be something as follows:</p>
+<img src="wcfbyexample_chapter14/ServiceAdapterBaseAft.png" />
+<p>We don't need to explain why an ExceptionNotifierViewModel instance is created, however the next line is critical in the implementation. Without it the client does not know that an exception took place when calling the server, throwing an exception ensures that the client processing is halted. The <code>SuspendProcessException</code> is needed as the following changes are done to the Application Dispatcher Unhandled Exception method:</p>
+<img src="wcfbyexample_chapter14/unhandledexceptionImplementation.png" />
+<h3>Dependency Injection - Testing Implementation</h3>
+<p>After the above changes, if we execute the tests we notice that all of them are passing. The fact is that our coverage is not that good; we need a new test that causes a server busines exception. The "CreateDuplicate" test does exactly so, if the test is executed the following window is displayed:</p>
+<img src="wcfbyexample_chapter14/testdisplayswindow.png" />
+<p>This is obviously a problem, DI can help to resolve this issue. We need to encapsulate the business exception handling on a sort of abstract service and then provide a different implementation when the tests are executed. We need to take the following steps:</p>
+<ul>
+<li>Create a new interface: IBusinessExceptionManager</li>
+<li>Amend the ClientServiceLocator so an instance of the new interface is exposed</li>
+<li>Use the new exposed interface in the ServiceAdapterBase ExecuteMethod</li>
+<li>Create a new implementation of the new interface: BusinessException Manager</li>
+<li>Add another implementation of the interface on the Test project</li>
+<li>Modify Spring.Net configuration files</li>
+</ul>
+<p>So the ServiceAdapterBase now looks like:</p>
+<img src="wcfbyexample_chapter14/finalImplementation.png" />
+<p>The client implementation then is:</p>
+<img src="wcfbyexample_chapter14/clientImplementation.png" />
+<p>The test implementation then is:</p>
+<img src="wcfbyexample_chapter14/testImplementation.png" />
+<p>Now, if the tests are executed, all of them pass including the new one:</p>
+<img src="wcfbyexample_chapter14/testsArePassing.png" />
+<h2>Business Warning Management</h2>
+<p>We now have a comprehensive mechanism for managing application and business exceptions, but we also need to work out a way for notifying for business warnings. Having dialog windows for warnings could annoyed users, so instead we will use a sort of balloon notification running on the Windows Task Bar. For this purpose we are using the <a href="http://www.codeproject.com/KB/WPF/wpf_notifyicon.aspx">WPF NptifyIcon</a> project. The following steps are required to provide this functionality:</p>
+<ul>
+    <li>Create a new interface: IBusinessWarningManager</li>
+    <li>Add a new service WarningManager to the ClientServiceLocator class</li>
+    <li>Change the ServiceAdapterBase class so it uses the new service</li>
+    <li>Create new BusinessWarningManager class</li>
+    <li>Amend the Spring.Net configuration file to setup the WarningManager</li>
+</ul>
+<p>The BusinesswarningManager implementation is as follows:</p>
+<img src="wcfbyexample_chapter14/BusinessWarningManager.png" />
+<p>It is worth noting how relatively easy is to invoke the TaskbarIcon in the above code. Then we need to change the <code>ServiceAdapterBase</code> to invoke the new method in the BusinessWarningManager:</p>
+<img src="wcfbyexample_chapter14/ServiceAdapterBaseWithBusinessWarning.png" />
+<p>When a notification is received on the client side, a notication is automatically displayed on the Windows Taskbar:</p>
+<img src="wcfbyexample_chapter14/taskbar.png" />
+<p>As we saw with the exception manager, we need a test implementation of the warning manager:</p>
+<img src="wcfbyexample_chapter14/testwarningimplementation.png" />
+<h2>Chapter Summary</h2>
+<p>Validation in WPF could be cumcumbersome sometimes, in this chapter a comprehensive solution using Validation attributes was presented that permits execute the same validation both in the client and server side thus providing easy testing even the validation logic is not located at the business entities.</p>
+<p>We also saw how the client can manage the business exceptions and warnings retrieved from the server side.</p>

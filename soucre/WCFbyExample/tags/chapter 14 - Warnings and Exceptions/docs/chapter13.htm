@@ -1,0 +1,314 @@
+<table border="0" width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a onclick="return (false);" href="wcfbyexample_chapter12.aspx"><img border="0" alt="Previous" src="wcfbyexample_introduction/previous.gif" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td align="left" width="33%">Chapter XII</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a title="WCF by Example - Introduction" href="wcfbyexample_introduction.aspx">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+<h2>Chapter overview</h2>
+<p>At this point in the series we have covered the most important infrastructure components, however our business domain consists of a single entity which doesn't help to explain how to resolve some common scenarios when designing parent-child across the different application layers. 
+    In this chapter, we are introducing a new entity to the model so we can describe how the above mentioned cases might be resolved.</p>
+<p>At the end of this chapter, at the appendix section, we also discussed the following topics:</p>
+<ul>
+    <li>How to execute the application in Visual Studio</li>
+    <li>Couple WPF aspects added in this chapter: Custom WPF Converter and Explicit Application ShutDown</li>
+    <li>AutoMapper</li>
+</ul>
+<h2>Model Entity Overview</h2>
+<p>Up to this point our model consisted of a single class: <code>Customer</code>. We are adding a new entity named: <code>Address</code>, this is a simple entity that contains customer address details:</p>
+<pre lang="cs">
+    public class Address
+        :EntityBase
+    {
+01      protected Address(){}
+
+02      public virtual Customer Customer { get; private set; }
+        public virtual string Street { get; private set; }
+        public virtual string City { get; private set; }
+        public virtual string PostCode { get; private set; }
+        public virtual string Country { get; private set; }
+
+03      public static Address Create(IRepositoryLocator locator, AddressDto operation)
+        {
+            var customer = locator.GetById&lt;Customer&gt;(operation.CustomerId);
+            var instance = new Address
+            {
+                ...
+            };
+
+            locator.Save(instance);
+            return instance;
+        }
+
+        public virtual void Update(IRepositoryLocator locator, AddressDto operation)
+        {
+            UpdateValidate(locator, operation);
+            ...
+            locator.Update(this);
+        }
+
+        private void UpdateValidate(IRepositoryLocator locator, AddressDto operation)
+        {
+            return;
+        }
+    }
+
+</pre>
+<p>The entity has a reference to the <code>Customer</code> reference (line 02) so we will have a 
+    one-to-many relationship. As we did with the <code>Customer</code> class, we hide the constructor (line 01) so the <code>Create</code> static method (line 03) needs to be invoked when a new instance is required.</p>
+<p>The <code>Customer</code> class needs some re-factor to accommodate for the new 
+    Address class; couple important points are that the Customer class will be responsible for the creation and deletion of <code>Address</code> 
+    instances and that the collection of addresses is not exposed directly to ensure the collection is well managed, see also how the <code>ISet</code> needs to be used because NHibernate:</p>
+<img src="wcfbyexample_chapter13/customer_class.png" />
+<pre lang="cs">
+
+01      public virtual ReadOnlyCollection&lt;Address&gt; Addresses()
+        {
+            if (AddressSet == null) return null;
+            return new ReadOnlyCollection&lt;Address&gt;(AddressSet.ToArray());
+        }
+
+02      public virtual Address AddAddress(IRepositoryLocator locator, AddressDto operation)
+        {
+            AddAddressValidate(locator, operation);
+            var address = Address.Create(locator, operation);
+            AddressSet.Add(address);
+            return address;
+        }
+
+03      public virtual void DeleteAddress(IRepositoryLocator locator, long addressId)
+        {
+            DeleteAddressValidate(locator, addressId);
+            var address = AddressSet.Single(a =&gt; a.Id.Equals(addressId));
+            AddressSet.Remove(address);
+            locator.Remove(address);
+        }
+</pre>
+<p>Instead, the collection is exposed by cloning the collection into a <code>ReadOnlyCollection</code> (line 01). If a new address needs to be added to the customer the <code>AddAddress</code> method must be used (line 02), the same applies when an address 
+    is to be removed (line 03)
+</p>
+<p>As a result of above changes the domain model is as follows:</p>
+<img src="wcfbyexample_chapter13/class_diagram.png" />
+<p>The following changes need to be added to the NHibernate mapping file:</p>
+<pre lang="xml">
+
+&lt;hibernate-mapping xmlns="urn:nhibernate-mapping-2.2" 
+                   assembly="eDirectory.Domain" 
+                   namespace="eDirectory.Domain.Entities"&gt;
+  
+  &lt;class name="Customer" table="Customer"&gt;
+    ...
+
+01  &lt;set name ="AddressSet" fetch="subselect"&gt;
+      &lt;key column="Customer_ID" foreign-key="FK_Customer_Address" not-null="true" /&gt;
+      &lt;one-to-many class="Address"/&gt;
+    &lt;/set&gt;
+  &lt;/class&gt;
+
+  &lt;class name="Address" table="Address"&gt;
+    &lt;id name="Id" type="Int64" unsaved-value="0"&gt;
+      &lt;generator class="native" /&gt;
+    &lt;/id&gt;
+
+02  &lt;many-to-one name="Customer" class="Customer" column="Customer_ID" not-null="true"/&gt;
+    &lt;property name="Street" length="50" not-null="true" /&gt;
+    &lt;property name="City" length="50" not-null="true" /&gt;
+    &lt;property name="PostCode" length="10" not-null="true" /&gt;
+    &lt;property name="Country" length="50" not-null="true" /&gt;
+  &lt;/class&gt;
+&lt;/hibernate-mapping&gt;
+</pre>
+<p>In the <code>Customer</code> mapping the private <code>AddressSet</code> collection is declared as an one-to-many collection of <code>Address</code> instances, we indicate that the <code>Customer_ID</code> field in the <code>Address</code> table is used as the link (line 01). At the <code>Address</code> mapping section, we also declare the <code>Customer</code> reference to use the same column name (line 02). This approach permits to navigate from the child back to the parent.</p>
+<p>Lets demonstrate how easy is to propagate the changes to our database, if we create a new test:</p>
+<img src="wcfbyexample_chapter13/address_test.png" />
+<p>And the configuration is set so the test is run using the NHibernate mode, then the test will generate the new schema for us, isn't it nice?. Just remember to change the test <code>App.config</code> file:</p>
+<img src="wcfbyexample_chapter13/test_configuration.png" />
+<p>You may want to open a connection to the database to see the new schema:</p>
+<img src="wcfbyexample_chapter13/new_schema.png" />
+<h2>New Address Service</h2>
+<p>We are planning to modify the user interface so the following screens will be available:</p>
+<img src="wcfbyexample_chapter13/new_main_screen.png" />
+<img src="wcfbyexample_chapter13/customer_details.png" />
+<img src="wcfbyexample_chapter13/address_details.png" />
+<p>We need to provide a new service so we can create, retrieve and update an address instance:</p>
+<img src="wcfbyexample_chapter13/address_service.png" />
+<p>Adding a new service requires the following:</p>
+<ul>
+    <li>Add the new interface to the <code>IContractLocator</code></li>
+    <li>There are three implementations of the interface that need to be updated</li>
+    <li>Add three new <code>AddressServiceProxy</code>, <code>AddressServiceAdapter</code> and <code>AddressWcfService 
+        classes</code></li>
+</ul>
+<p>The implementation of the above classes is straight forward as they are in fact very similar to the implementations for the <code>Customer</code> service; you may want to get the source code for further details.</p>
+<p>In the server side, we need to amend the eDirectory.WcfService  to add the new <code>Address</code> service to the list of endpoints:</p>
+<pre lang="c#">
+&lt;configuration&gt;
+  ...
+  &lt;system.serviceModel&gt;
+    &lt;services&gt;
+      ...
+      &lt;service name="eDirectory.WcfService.AddressWcfService" behaviorConfiguration="eDirectory.WcfServiceBehaviour"&gt;
+        &lt;endpoint address="AddressServices" binding="basicHttpBinding" bindingConfiguration="eDirectoryBasicHttpEndpointBinding" contract="eDirectory.Common.ServiceContract.IAddressService" /&gt;
+      &lt;/service&gt;
+    &lt;/services&gt;
+    ...
+  &lt;/system.serviceModel&gt;
+  ...
+&lt;/configuration&gt;
+
+</pre>
+<h2>Client Side</h2>
+<p>Besides implementing the new classes: <code>AddressServiceAdapter</code> and <code>AddressServiceProxy</code></p>
+<img src="wcfbyexample_chapter13/client_service_implementation.png" />
+<p>We have added a new bunch of views with their respective models and viewmodels:</p>
+<img src="wcfbyexample_chapter13/client_agenda_classes.png" />
+<p>Among the model classes the one that needs to be mention is <code>AgendaModel</code>:</p>
+<pre lang="c#">
+    class AgendaModel
+    {
+        public IList<CustomerDto> CustomerList { get; set; }
+        public CustomerDto SelectedCustomer { get; set; }
+        public AddressDto SelectedAddress { get; set; }
+    }
+</pre>
+<p>Notice that the model provides class holders for the selected grid rows, this works in both ways which is very nice. The only thing to do in the view is to set the binding correctly:</p>
+<img src="wcfbyexample_chapter13/customer_grid.png" />
+<p>It may not be obvious but when the list of clients is retrieved from the server, eash customer dto contains a collection of addresses. You may implement a more chaty design where the address collection is only retrieved when the customer is selected. As well, the <code>Customer</code> reference in the <code>Address</code> class translates into the Dto implementation in storing the <code>CustomerId</code> instead, if you don't take this approach the serialization of your Dtos would be a nightmare to say the least:</p>
+<img src="wcfbyexample_chapter13/address_dto.png" />
+<p>There is another interesting aspect on the <code>AgendaViewModel</code>, that is the way we manage the action buttons using the <code>RelayCommand</code> class. In this case, if a customer instance contains any address, the user needs to delete all addresses before the delete button for the customer is enabled. This is achieved easily implementing a predicate in the <code>RelayCommand</code> constructor using the above mentioned selected holder:</p>
+<pre lang="cs">
+private RelayCommand DeleteCustomerCommandInstance;
+        public RelayCommand DeleteCustomerCommand
+        {
+            get
+            {
+                if (DeleteCustomerCommandInstance != null) return DeleteCustomerCommandInstance;
+                DeleteCustomerCommandInstance = new RelayCommand(a =&gt; DeleteCustomer(Model.SelectedCustomer.Id), 
+                                                                 p =&gt; Model.SelectedCustomer != null && Model.SelectedCustomer.Addresses.Count == 0);
+
+                return DeleteCustomerCommandInstance;
+            }
+        }
+</pre>
+<p>The XAML declaration is piece of cake:</p>
+<img src="wcfbyexample_chapter13/customer_delete_xaml.png" />
+<p>Another aspect implemented is something that we have not had a chance to see before; this is how the ViewModel and Services use the selected customer dto to enhance the user experience, for example, when a new customer instance is created we need to ensure 
+    that the new customer instance is the one selected in the grid once the user is back to the main screen. We resolve this requirement as follows:</p>
+<pre lang="cs">
+        public RelayCommand CreateCustomerCommand
+        {
+            get
+            {
+                if (CreateCustomerCmdInstance != null) return CreateCustomerCmdInstance;
+01              CreateCustomerCmdInstance = new RelayCommand(a =&gt; OpenCustomerDetail(null));
+                return CreateCustomerCmdInstance;
+            }
+        }
+
+        private void OpenCustomerDetail(CustomerDto customerDto)
+        {
+            var customerDetailViewModel = new CustomerDetailViewModel(customerDto);
+02          var result = customerDetailViewModel.ShowDialog();
+03          if (result.HasValue && result.Value) Model.SelectedCustomer = customerDetailViewModel.Model.Customer;
+04          Refresh();
+        }
+
+        private void Refresh()
+        {
+            long? customerId = Model !=null && Model.SelectedCustomer != null ? Model.SelectedCustomer.Id : (long?) null;
+            long? addressId = Model != null && Model.SelectedAddress != null ? Model.SelectedAddress.Id : (long?)null;
+            var result = CustomerServiceInstance.FindAll();
+            Model = new AgendaModel { CustomerList = result.Customers };
+            if(customerId.HasValue)
+            {
+05              Model.SelectedCustomer = Model.CustomerList.FirstOrDefault(c =&gt; c.Id.Equals(customerId));
+                ...
+            }
+            RaisePropertyChanged(() =&gt; Model);
+        }
+</pre>
+<p>There is a little of code above but bear with us for a second; the <code>CreateCustomerCommand</code> delegates to the <code>OpenCustomerDetail</code> method (line 01), this method calls the customer detail screen and if a new customer instance is created it sets the <code>SelectedCustomer</code> property in the Model (lines 02 & 03). Then the <code>Refresh</code> method is called which invokes the <code>CustomerServiceInstance.FindAll()</code> and sets the <code>Model.SelectedCustomer</code> (line 05) to the value it had before the service was called.</p>
+
+<h2>Chapter Summary</h2>
+<p>Parent-Child relationships are common in all applications, in this chapter we have discussed how relatively easy is to implement those across all our application layers. We have discussed how to model our entities so collections are well managed, in summary the parent is fully responsible for the creation and deletion of child instances. It is a good example how our entities are moving away from just being simple CRUD data classes 
+    to more complex entities that implement business behavior.</p>
+<p>We also discussed the NHibernate implementation and how easy is at this point of the project creating new tests that automatically manage the new database schema, an aspect that proves be invaluable. We also covered some MVVM technics to leverage some common scenarios on the client side like enable/disable action buttons using the predicates on the <code>RelayCommand</code>; once more it was demonstrated how much value can be achieved providing a rich model implementation to the XAML views reducing the amount of code behind as result of the XAML binding capabilities.</p>
+<p>In the next chapter we will discuss how easy is to deploy our application to Microsoft Azure.</p>
+<h2>Appendix</h2>
+<h3>Get the Application Running</h3>
+<p>For those that are new to the series or those ones that are not sure yet how to get the eDirectory application running, the following section describes the steps of how to quickly get the application running. eDirectory is an application that can be run in-memory or against a SQL Server database using a NHibernate repository implementation. Here we discuss how to get the client running in a very easy manner: in-process in-memory mode.</p>
+<p>In first place you need to verify that the client <code>App.Config</code> is set properly so the SpringConfigFile is set to use the InMemoryConfiguration.xml file:</p>
+<img src="wcfbyexample_chapter13/client_inmemory_setting.png" />
+<p>Ensure that the eDirectory.WPF application is set to be the start up one:</p>
+<img src="wcfbyexample_chapter13/client_as_startup_app.png" />
+<p>Change the configuration to the InMemory instance in Visual Studio:</p>
+<img src="wcfbyexample_chapter13/inmemery_configuration.png" />
+<p>Now the only thing you need is to start the application: F5 or CTRL+F5:</p>
+<img src="wcfbyexample_chapter13/bootstrapper_screen.png" />
+<h3>Couple WCF Beauties</h3>
+<p>There are couple things done in this chapter on the WPF side that are worth of a brief discussion. WCF by default terminates the client application when the first view that was created is closed. In this version of eDirectory we required to ask the user which view must be open, once the user presses the Ok button the original screen must be closed; if nothing is done, the application terminates at that point. An easy way of stopping this behavior is to indicate WPF that the application itself will look after its shutdown:</p>
+<pre lang="cs">
+    public partial class App : Application
+    {
+        
+        public App()
+        {
+01          ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        }
+
+        private void BootStrapper(object sender, StartupEventArgs e)
+        {
+            var boot = new eDirectoryBootStrapper();
+            boot.Run();            
+02          Shutdown();
+        }
+    }
+</pre>
+<p>When the App instance is created, it is indicated that the application will shutdown manually (line 01), which it takes place after the <code>Run</code> method returns (line 02).</p>
+<p>The second beauty is a customized enum converter that is used by the <code>Selector</code> view that permits matching a radio-button to a specific enum value. The converter is:</p>
+<pre lang="cs">    public class EnumMatchToBooleanConverter : IValueConverter
+    {
+01      public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null || parameter == null) return false;
+
+            string checkValue = value.ToString();
+            string targetValue = parameter.ToString();
+            return checkValue.Equals(targetValue, StringComparison.InvariantCultureIgnoreCase);
+        }
+
+02      public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null || parameter == null) return null;
+
+            bool useValue = (bool)value;
+            string targetValue = parameter.ToString();
+            return useValue ? Enum.Parse(targetType, targetValue) : null;
+        }
+    }
+</pre>
+<p>The <code>Convert</code> method is used to see if the radio-button must be set given an enumeration value, the method assumes that the radio-button is to be set if the parameter matches the passed value. The <code>ConvertBack</code> returns null if the radio-button is not set, if it is set it returns the enum value set in the XAML.</p>
+<p>The XAML is as follows:</p>
+<img src="wcfbyexample_chapter13/converter.png" />
+<p>The converter is declared as a resource named <code>enumConverter</code> and then used in the radio-button declaration, a enum value is assigned to each; the <code>CurrentOption</code> is a <code>ViewTypeEnum</code> property declared on the ViewModel that is correctly set without any other additional code. Nice !.</p>
+<h3>AutoMapper</h3>
+<p>In this chapter we decided to introduce AutoMapper, this is an object-to-object mapper and it is ideal to use when dealing with domain entities and Dtos. You may want to have a look at the <a href="http://automapper.codeplex.com/wikipage?title=Getting%20Started&amp;referringTitle=Documentation">CodePlex project</a> for further details.</p>
+<p>It is quite easy to use AutoMapper, in first place we create the mappings, then we install them and then the mappings can be used. In the eDirectory.Domain project a new class was added that declares the mappings:</p>
+<img src="wcfbyexample_chapter13/automapper_mappings.png" />
+<p>Two mappings are defined, the mapping from <code>Customer</code> to <code>CustomerDto</code> is the interesting one. This one maps the Dto Addresses collection to a function that delegates into the other AutoMapper mapping to map the <code>Addresses</code> collection in the entity to a collection of <code>AddressDto</code> instances.</p>
+<p>Then when the WCF service is started the static <code>Install</code> method is invoked:</p>
+<img src="wcfbyexample_chapter13/automapper_initialisation.png" />
+<p>You can also levarage the Spring.Net capabilities to initialise the static method just declaring the class in the configuration file, this is the approach used when we execute the application in-memory mode, this is another nice example of the Spring.Net capabilities:</p>
+<img src="wcfbyexample_chapter13/automapper_spring_net.png" />
+<p>An example of how the eDirectory solution uses AutoMapper mapping is found at the <code>Customer</code> service implementation:</p>
+<img src="wcfbyexample_chapter13/automapper_example.png" />

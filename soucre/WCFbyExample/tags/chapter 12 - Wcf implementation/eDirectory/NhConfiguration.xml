@@ -1,0 +1,55 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  NHibernate Configuration
+  ========================
+-->
+  <objects xmlns="http://www.springframework.net">
+
+    <!-- CLIENT SERVICE LOCATOR -->
+    <object 
+            id="ClientServiceLocatorRef" 
+            type="eDirectory.WPF.Services.ClientServiceLocator, eDirectory.WPF"  
+            factory-method="Instance" 
+            singleton="true">
+      
+      <property name="CommandDispatcher" ref="CommandDispatcherRef" />
+    </object>   
+
+    <!-- Command Dispatcher -->
+    <object
+            id="CommandDispatcherRef"
+            type="eDirectory.Domain.Services.DirectCommandDispatcher, 
+                  eDirectory.Domain"/>
+
+    <!-- SERVER CONTAINER -->
+    <object
+        id="ServerContainerRef"
+        type="eDirectory.Domain.AppServices.Container, eDirectory.Domain"
+        singleton="true">
+
+      <property name="RequestContext" ref="RequestContextRef" />
+    </object>
+
+    <!-- Request Context -->
+    <object
+            id="RequestContextRef"
+            type="eDirectory.Naive.AppServices.RequestContextNaive, eDirectory.Naive" />
+    
+    <!-- Global Context -->
+    <object
+            id="GlobalContextRef"
+            type="eDirectory.Domain.AppServices.GlobalContext, eDirectory.Domain"
+            factory-method="Instance"
+            singleton="true">
+
+      <property name="TransFactory" ref="TransFactoryRef" />
+    </object>
+
+    <!-- Transaction Factory -->
+    <object
+            id="TransFactoryRef"
+            type="eDirectory.NHibernate.TransManager.TransManagerFactoryNh, eDirectory.NHibernate">
+      
+      <property name="ConfigurationFileName" value="nhibernate.cfg.xml" />
+    </object>
+  </objects>

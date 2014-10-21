@@ -1,0 +1,261 @@
+﻿<table width="100%">
+<tbody>
+<tr>
+<td width="33%" align="left"><a href="wcfbyexample_chapter06.aspx"><img complete="true" src="wcfbyexample_introduction/previous.gif" alt="Previous" /></a></td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+<tr>
+<td width="33%" align="left">Chapter VI</td>
+<td width="33%"></td>
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The series</h2>
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a href="wcfbyexample_introduction.aspx" title="WCF by Example - Introduction">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level.</p>
+<h2>Chapter overview</h2>
+<p>In the previous chapter we have introduced a basic WPF client, currently the view and the model are almost ready but the viewmodel does not provide any mechanism for calling service methods. We have previously discussed the need from decoupling the client from the WCF distribution layer, the goal is to provide a development environment for RAD that leverages the business exploration without the overhead of deploying a full production infrastructure. We would like to provide a development environment where changes are inexpensive and deployments are easy. We don’t want to install services in IIS or maintain a SQL Server database, we are looking for 
+    an installation that comprises a bunch of files that can be deployed in a memory stick 
+    if necessary. BAs, product owners, testers should be able to execute this application from a folder location.</p>
+<p>Therefore we need to abstract the distribution layer so different implementations can be used in a transparent manner. In this chapter we describe the contract locator and how the client uses this mechanism to put in place a 
+    sort of pipeline pattern that provides the required functionality we are looking for.</p>
+<p>The source code for this chapter can be found at <a href="http://wcfbyexample.codeplex.com/SourceControl/changeset/changes/76739" title="Chapter IV source code">Codeplex change set 76739</a>. The latest code for the eDirectory solution is found at <a href="http://wcfbyexample.codeplex.com/SourceControl/list/changesets" title="patterns &amp; practices: WCF by example">Codeplex</a>.</p>
+    
+<h2>Base components</h2>
+<p>We need to define a couple new interfaces in the Common assembly.</p>
+<p>The IContractLocator interface provides a list of all the services required for the client. 
+    At this time our project contains one single service: CustomerServices, 
+    therefore the new interface is quite straight forward. Both the server and client will implement this interface.</p>
+<pre lang="C#">
+
+    public interface IContractLocator
+    {
+        ICustomerService CustomerServices { get; }
+    }
+</pre>
+<p>The IContract interface is used by any service used in the client side, the 
+    interface does not contain any implementation so it is what we call a behavirial interface. 
+    A generic class will use this interface in its declaration, we will cover this 
+    aspect later in this chapter. We need to do a little change so the ICustomerService interface inherits from this new interface.</p>
+<pre lang="C#">
+     
+    public interface IContract
+    {
+    }
+
+
+    [ServiceContract(Namespace = "http://wcfbyexample/customerservices/")]
+    public interface ICustomerService
+        :IContract
+    {
+
+        ...
+    }
+</pre>
+<h2>Server side implementation</h2>
+<p>In the server side the implementation of the IContractLocator is very straight forward, it just delegates to the 
+    customer service instance. It is worth noting that only the in-memory client will 
+    use this implementation. This is the implementation used when we want to execute 
+    client and server components in a single process, normally means that WCF is not 
+    used.</p>
+<pre lang="C#">
+
+    public class ServerContractLocator
+        :IContractLocator
+    {
+        ICustomerService CustomerServiceInstance;
+
+        #region IContractLocator Members
+
+        public ICustomerService CustomerServices
+        {
+            get 
+            {
+                if (CustomerServiceInstance != null) return CustomerServiceInstance;
+                CustomerServiceInstance = new CustomerService();
+                return CustomerServiceInstance;
+            }
+        }
+
+        #endregion
+    }
+</pre>
+<h2>Client side implementation</h2>
+<p>The implementation of the IContractLocator in the client is slightly different, in the client we need to separate two concerns in our design. We need to provide a layer for dealing with the response instance if there are business warnings or exceptions. 
+    In second place, we need to deal with the invocation of the service itself. The first layer uses a template pattern for the service invocation, as a result of the abstraction used in the design it is relative easy to "plug" different implementations if needed.</p>
+<img src="wcfbyexample_chapter07/ClientContractLocator.png" />
+<p>We need to explain in some detail the IContractLocator in the client:</p>
+<pre lang="C#">
+
+    public class ClientContractLocator
+        :IContractLocator
+    {
+01      private ICustomerService CustomerServiceInstance;
+
+02      public IContractLocator NextAdapterLocator { get; set; }
+
+        #region IContractLocator Members
+
+        public ICustomerService CustomerServices
+        {
+            get 
+            {
+                if (CustomerServiceInstance != null) return CustomerServiceInstance;
+03              CustomerServiceInstance = new CustomerServiceAdapter(NextAdapterLocator.CustomerServices);
+                return CustomerServiceInstance;
+            }
+        }
+
+        #endregion
+    }
+</pre>
+<p>In this implementation, when CustomerServices is called an instance of 
+    CustomerServiceAdapter is returned. An IContractLocator is used the first time 
+    this property is used to determine whom the CustomerServiceAdapter delegates to 
+    invoke the service call (Line 03). The NextAdapterLocator property is used for 
+    that purpose (Line 02). It is worth noting that the NextAdapterLocator needs to 
+    be instanced before the CustomerServices can be called. In respect to the ViewModel classes, 
+    they can interact with the ClientContractLocator as they were dealing with the 
+    service itself, this is due to the CustomerServices read-only property 
+    implements the ICustomerService. Effectively this is where the abstraction that 
+    we mentioned before takes place.</p>
+    <p>We haven't properly introduced the CustomerServiceAdapter, this class inherits from a base class named BaseServiceAdapter,&nbsp; 
+        this is a generic class for services that implement the mentioned IContract 
+        interface:</p>
+<img src="wcfbyexample_chapter07/ClientServiceAdapter.png" />
+<p>The purpose of the CustomerServiceAdapter is to execute the CustomerService 
+    instance that is provided by the ClientContractLocator with the NextAdapterLocator 
+    instance. The CustomerServiceAdapter invokes the service and then deals with the 
+    warnings and exceptions from the response:</p>
+<pre lang="C#">
+
+    abstract class ServiceAdapterBase&lt;TService&gt; 
+01    where TService: IContract
+    {
+        protected TService Service;
+
+        protected ServiceAdapterBase(TService service)
+        {
+02          Service = service;
+        }              
+        
+03      public TResult ExecuteCommand&lt;TResult&gt;(Func&lt;TResult&gt; command) where TResult : IDtoResponseEnvelop
+        {
+04          TResult result = command.Invoke();
+            
+05          if (result.Response.HasWarning)
+            {
+                // TODO: Implement Business Warning processing
+            }
+06          if (result.Response.HasException)
+            {
+                // TODO: Implement Business Exception processing
+            }
+            return result;
+        }
+    }
+</pre>
+<p>There are few aspects in the above code that needs to be mentioned. In line 03 we can see that the generic ExecuteCommand method in conjuction with the Func parameter provides a neat mechanism for executing service methods. The method executes the delegate instace and stores the result, then it checks for warnings and exceptions. What is not obvious is how the Service is used (Line 02), to do so we need to have a look at the CustomerServiceAdapter implementation:</p>
+<pre lang="C#">
+
+    class CustomerServiceAdapter
+01      :ServiceAdapterBase&lt;ICustomerService&gt;, ICustomerService
+    {
+
+        #region Constructor
+
+        public CustomerServiceAdapter(ICustomerService service)
+            : base(service) { }
+
+        #endregion
+        #region ICustomerService Members
+
+        public CustomerDto CreateNewCustomer(CustomerDto customer)
+        {
+02          return ExecuteCommand(() => Service.CreateNewCustomer(customer));
+        }
+
+        ...
+
+        #endregion
+    }
+</pre>
+<p>As mentioned, the CustomerServiceAdapter implements the ICustomerService. Using generics (line 01) in the base class definition simplyfies the design as it makes easy to use lambda expresions when implementing the service interface. 
+    In Line 02 we can see an example of this type of implementation, the lambda expresion works really well as it permits to call service methods with different parameters using a delegate that does not require input parameters 
+    in its definition (great !!!), this is possible as the lambda expression can use outer variables of the anonymous method. This feature simplifies a lot the design, it is a real beauty.</p>
+<h2>Client Service Locator</h2>
+<p>The viewmodels need access to the ClientContractLocator, in our client 
+    application a single instance is sufficient. DI could be used for this purpose but again the locator pattern that was used in the server side comes quite handy in this case.</p>
+<pre lang="C#">
+
+    public class ClientServiceLocator
+        : IClientServices
+    {
+        static readonly Object LocatorLock = new object();
+        private static ClientServiceLocator InternalInstance;
+
+        private ClientServiceLocator() { }
+
+        public static ClientServiceLocator Instance()
+        {
+            if (InternalInstance == null)
+            {
+                lock (LocatorLock)
+                {
+                    // in case of a race scenario ... check again
+                    if (InternalInstance == null)
+                    {
+                        InternalInstance = new ClientServiceLocator();
+                    }
+                }
+            }
+            return InternalInstance;
+        }
+
+        #region IClientServices Members
+
+        public IContractLocator ContractLocator { get; set; }
+
+        #endregion
+    }
+</pre>
+<p>The IClientServices interface declares which global services must be available.</p>
+<h2>Test Re-Factor</h2>
+<p>We already have a set of tests that execute our services from the server side, lets re-factor those tests so instead the services are executed from the client side using the ClientContractLocator. 
+    As we will see this is relativily easy. on the left side we have the test code 
+    before the re-factor, on the right side is the new code:</p>
+<img src="wcfbyexample_chapter07/test_compare.png" />
+<p>As we can see above, after the re-factor the Service property is an instance of ClientContractLocator.</p>
+<pre lang=C#">
+
+    [TestClass]
+    public class CustomerServiceTests
+    {        
+        public ICustomerService Service { get; set; }
+        public CustomerDto CustomerInstance { get; set; }
+
+        [TestInitialize]
+        public void CustomerServiceTestsInitialize() 
+        {
+            GlobalContext.Instance().TransFactory = new TransManagerEntityStoreFactory();
+            Container.RequestContext = new RequestContextNaive();
+01          Service = new ClientContractLocator { NextAdapterLocator = new ServerContractLocator() }.CustomerServices;
+        }
+
+        ...
+    }
+</pre>
+<p>There are few things here that are taking place when the ClientContractLocator was defined in line 01, lets see if we can explain in more detail how the tests are setting the Service property used in our tests. The following figure demostrates how calling the CustomerServices in the ClientContractLocator an instance of the CustomerServiceAdapter is returned which was initialised passing a CustomerService instance.</p>
+<img src="wcfbyexample_chapter07/CustomerServices_Implementation.png" />
+<p>So when we call the service to create a new customer in our tests, the following takes place:</p>
+<img src="wcfbyexample_chapter07/Class_Sequence.png" />
+<p>It is recommendable to debug these tests to get familiar with the design that we have introduced in this chapter.</p>
+<h2>Chapter summary</h2>
+<p>In this charter we have set up the baseline for our distribution layer in the client side. Our design provides the decoupling required between the ViewModel classes and the services 
+    that we mentioned at the start of the chapter. With a little change in our service tests, we 
+    have also demostrated how easy is to have the client invoking the services in the server side. This model is critical to provide a pluggable architecture so we can deploy our application during the business exploration without having to use WCF leveraging the deployment process at this stage.</p>
+    <p>We have not covered the WCF implemetation, this aspect is covered in a later chapter in the series. However, as we will see, the WCF implementation is relatively straight forward once we have in place the pattern introduced in this chapter.</p>
+<p>In the next chapter we will see how commands are implemented in the front-end and how the ViewModel classes invoke the services using the ClientServiceLocator mentioned in this chapter. We are very close to have a comprehensive infrastructure in both, the client and server side to start deploying versions of our solution to our client.</p>
+

@@ -1,0 +1,413 @@
+﻿<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Article Source</title>
+<link rel="stylesheet" type="text/css" href="http://s.codeproject.com/App_Themes/Std/CSS/Main.css?dt=2.6.121130.2" />
+<base href="http://www.codeproject.com/KB/architecture/" />
+</head>
+<body>
+<!--
+HTML for article "WCF by Example - Chapter XV - RavenDB Implementation" by Enrique Albert
+URL: http://www.codeproject.com/KB/architecture/wcfbyexample_chapter15.aspx
+Copyright 2011 by Enrique Albert
+All formatting, additions and alterations Copyright © CodeProject, 1999-2012
+-->
+
+<hr class="Divider subdue" />
+<div>
+
+
+
+
+<!-- Start Article -->
+<span id="ArticleContent">
+<table border="0" width="100%">
+<tbody>
+<tr>
+<td align="left" width="33%"><a href="wcfbyexample_chapter14.aspx" onclick="return (false);"><img hspace="0" height="48" border="0" width="48" style="width: 48px; height: 48px;" alt="Previous" src="previous.gif" complete="true" /></a></td>
+
+<td width="33%"></td>
+
+<td width="33%"></td>
+</tr>
+
+<tr>
+<td align="left" width="33%">Chapter XIV</td>
+
+<td width="33%"></td>
+
+<td width="33%"></td>
+</tr>
+</tbody>
+</table>
+
+<h2>The Series</h2>
+
+<p>WCF by example is a series of articles that describe how to design and develop a WPF client using WCF for communication and NHibernate for persistence purposes. The <a title="WCF by Example - Introduction" href="wcfbyexample_introduction.aspx">series introduction</a> describes the scope of the articles and discusses the architect solution at a high level. The source code for the series is found at <a href="http://wcfbyexample.codeplex.com/">CodePlex</a>.</p>
+
+<h2>Chapter Overview</h2>
+<p>For those new to the series, the persistence components of the eDirectory solution are designed around the unit of work and repository patterns. The <code>TransManager</code> is responsible for the unit of work implementation, therefore it provides access to the <code>IRepositoryLocator</code> which gives access to individual entity repositories. The repositories are based on generic implementations that are created as they are needed by the repository locator. These generic repositories expose basic CRUD methods and endpoint to a <code>IQueryble</code> method leveraged by the persistence Linq providers</p>
+<p>The following is an example of the code used in the server components:</p>
+<pre lang="cs">
+    public CustomerDto UpdateCustomer(CustomerDto dto)
+    {
+01		return ExecuteCommand(locator => UpdateCustomerCommand(locator, dto));
+    }
+
+    private CustomerDto UpdateCustomerCommand(IRepositoryLocator locator, CustomerDto dto)
+    {
+02		var instance = locator.GetById<Customer>(dto.Id);
+03		instance.Update(locator, dto);            
+		return Customer_to_Dto(instance);
+    }
+</pre>
+<p>Line 01: Entry point for the customer service to update an existing instance</p>
+<p>Line 02: Using the Dto.Id property we use the Locator to resolve the customer instance</p>
+<p>Line 03: Then we delegate to the domain class to update itself passing the locator and the Dto instances</p>
+<p>Up to this chapter, we have seen so far two implementations of the persistence components: InMemory and NHibernate. In this chapter we will cover a new implementation: RavenDB. <a title="ravendb" href="http://ravendb.net/">RavenDB</a> is a document-orientated database that facilitates the persistence of objects, in NHibernate a mapping is required between the entity classes in the database tables. But in RavenDB there is not such a mapping.</p>
+<p>We should see how easily is to implement a customized set of persistence components so the eDirectory application can save and read objects from RavenDB, in this article we discussed how to get the Embedded document store working and also what the steps are required to get unit tests using this new implementation.</p>
+<p>As a some sort of disclosure, I decided not to change the domain entities that we have been used so far during the series, as a result you might find that 
+    <a href="http://ravendb.net/docs/theory/document-structure-design">the best design practices</a> for a RavenDB solution are not strictly followed within this example. Nevertheless, it provides a good example and what I hope it could be an interesting implementation. In a different line, as with NHibernate, the RavenDB implementation in the eDirectory solution is leveraged by using the RavenDB Linq provider and generic repositories; in a real scenario, this approach may result too restrictive and customized repository implementations might be required; for example, RavenDB indexes and other advance functionality would probably be required.</p>
+<p>Besides the mentioned constraints, the proposed architecture in this article could work well in many cases or at least be used at a start point for your projects.</p>
+<h2>Before</h2>
+<p>A new project was added to the solution named <code>eDirectory.RavenDB</code>. Then NuGet was used to get a reference to 
+    <a href="http://nuget.org/packages/RavenDB-Embedded">RavenDB Embedded</a>. A post-build event was added so all the build artifacts are copied to the libs folder so it can be easily used by the client project.</p>
+<h2>RavenDB Repository</h2>
+<p>The repository implementation is very similar to the NHibernate one in many aspects:</p>
+<pre lang="cs">
+public class RepositoryRavenDB&lt;TEntity&gt;
+	: IRepository&lt;TEntity&gt;
+{
+	private readonly IDocumentSession _sessionInstance;
+	private readonly string _idPrefix;
+
+	public RepositoryRavenDB(IDocumentSession session)
+	{
+		_sessionInstance = session;
+01		_idPrefix = GetPrefix();
+	}
+
+	private static string GetPrefix()
+	{
+		var typeName = typeof (TEntity).Name;
+		var flag = typeName.Last().Equals('s');
+02		return typeName +
+			   (flag
+					? "es/"
+					: "s/");
+	}
+
+	#region Implementation of IRepository&lt;TEntity&gt;
+
+	public TEntity Save(TEntity instance)
+	{       
+03		_sessionInstance.Store(instance);
+		return instance;
+	}
+
+	public void Update(TEntity instance)
+	{
+	}
+
+	public void Remove(TEntity instance)
+	{
+04		_sessionInstance.Delete(instance);
+	}
+
+	public TEntity GetById(long id)
+	{
+05		return _sessionInstance.Load&lt;TEntity&gt;(_idPrefix +  id);
+	}
+
+	public IQueryable&lt;TEntity&gt; FindAll()
+	{
+06		return _sessionInstance.Query&lt;TEntity&gt;();
+	}
+
+	#endregion
+}
+</pre>
+<p>Line 01: For each repository/entity type a prefix is generated to be used by the <code>Load</code> method</p>
+<p>Line 02: Prefixes are terminated in plural, for entity names that finish by a 'S' we need an additional check</p>
+<p>Line 03: Invoking the <code>Store</code> method a new instance is saved in RavenDB, there is not need for additional mapping to get this working, which is very cool feature. Also, 
+    <a href="http://ravendb.net/docs/client-api/basic-operations/saving-new-document">RavenDB detects the Id property</a> in our entities by name convention and the property is populated once the method is returned</p>
+<p>Line 04: The <code>Delete</code> method is used to remove entities from the database</p>
+<p>Line 05: The <code>Load</code> method is the optimized mechanism to retrieve entities by Id, this is where the prefix needs to be used</p>
+<p>Line 06: The <code>FindAll</code> method delegates to the RavenDB Linq provider, exactly the same way it is being done in the NHibernate implementation</p>
+<p>Also another aspect to notice, the Update method does not require any implementation to work with RavenDB</p>
+<h2>Repository Locator</h2>
+<p>The locator implementation is very simple, it is very much the same we have seen before:</p>
+<pre lang="cs">
+public class RepositoryLocatorRavenDB
+	: RepositoryLocatorBase, IResetable, IStoreInitialiser
+
+{
+	private readonly IDocumentSession _sessionInstance;
+
+	public RepositoryLocatorRavenDB(IDocumentSession session)
+	{
+		_sessionInstance = session;
+	}
+
+	#region Overrides of RepositoryLocatorBase
+
+	protected override IRepository&lt;T&gt; CreateRepository&lt;T&gt;()
+	{
+01     return new RepositoryRavenDB&lt;T&gt;(_sessionInstance);
+	}
+
+	#endregion
+
+	#region Implementation of IResetable
+02		...        
+	#endregion
+
+	#region Implementation of IStoreInitialiser
+02		...
+	#endregion
+}
+</pre>
+<p>Line 01: The base locator class calls this method to obtain an instance of a repository for a given type</p>
+<p>Line 02: These two sections are omitted for the time being as their purpose is solely for testing reasons, we will discuss them later within this article</p>
+<h2>Transaction Manager</h2>
+<p>Again the implementation of this class is very similar to the NHibernate one:</p>
+<pre lang="cs">
+public class TransManagerRavenDB
+	: TransManagerBase
+{
+	private readonly IDocumentSession _sessionInstance;
+
+	public TransManagerRavenDB(IDocumentSession session)
+	{
+		_sessionInstance = session;
+01		Locator = new RepositoryLocatorRavenDB(_sessionInstance);
+	}
+
+	#region Overriden Base Methods
+
+	public override void CommitTransaction()
+	{
+		base.CommitTransaction();
+02		_sessionInstance.SaveChanges();
+	}
+
+	public override void Rollback()
+	{
+		base.Rollback();
+03		_sessionInstance.Advanced.Clear();
+	}
+
+	protected override void Dispose(bool disposing)
+	{
+	  ...
+	}
+	
+	private void Close()
+	{
+	  ...
+	}
+
+	#endregion
+}
+</pre>
+<p>Line 01: A <code>IDocumentSession</code> is passed in the constructor that is used for the creation of the <code>RepositoryLocatorRavenDB</code></p>
+<p>Line 02: To commit all the changes done since the transaction manager was created we need to invoke the <code>SaveChanges</code> method in the <code>IDocumentSession</code></p>
+<p>Line 03: The <code>Clear</code> is used to discard all the changes if a rollback is required</p>
+<p>It is worth nothing that there is not an specific mechanism for starting the transaction like we have in NHibernate</p>
+<h2>Transaction Manager Factory</h2>
+<p>This component is responsible for two key roles; the creation of the <code>IDocumentSession</code> and the <code>TransManager</code>:</p>
+<pre lang="cs">
+    public class TransManagerFactoryRavenDB
+        : ITransFactory
+    {
+        private IDocumentStore _documentStore;
+
+        private IDocumentStore DocumentStore
+        {
+            get
+            {
+03              if (_documentStore != null) return _documentStore;
+                _documentStore = InitialiseDocumentStore();
+                return _documentStore;
+            }
+        }
+
+        private IDocumentStore InitialiseDocumentStore()
+        {
+            var store = new EmbeddableDocumentStore { DataDirectory = "eDirectory" };
+01          store.Initialize();
+            return store;
+        }
+
+        #region Implementation of ITransFactory
+
+        public ITransManager CreateManager()
+        {
+02          return new TransManagerRavenDB(DocumentStore.OpenSession());
+        }
+
+        #endregion
+    }
+</pre>
+<p>Line 01: Creates an embeddable document store instance named "eDirectory", this would automatically generate a RavenDB instance on your deployment folder. The Initialize method is critical before any action can be invoked against the store.</p>
+<p>Line 02: This is the factory method that returns a Transaction Manager passing a new session to its constructor. Like with NHibernate this session instance is not available to the code besides the Locator and Repositories. This is key aspect to get the unit of work correctly working.</p>
+<p>Line 03: You may want to enhance this method to avoid a race condition, for example, a lazy initialization of the document store would be advisable</p>
+<h2>How to Configure the Client UI</h2>
+<p>In order to get the WPF Client to use the RavenDB just follow next instructions:</p>
+<ul>
+    <li>Ensure all projects build correctly, you may want to manually delete all the files in your Debug or Release folder</li>
+    <li>Modify the App.config in the client (eDirectory.WPF) so the SpringConfigFile is set to: file://RavenDBConfiguration.xml</li>
+    <li>Execute the client project</li>
+    <li>Create a new customer using the 'Customer with address view'</li>
+</ul>
+<p>At this point, after creating the first customer instance you probably will get an empty grid like the following:</p>
+<p>We create the first customer:</p>
+<img src="firstCustomer.png" />
+<p>An after pressing the save button the customer grid is empty:</p>
+<img src="customerGridIsEmpty.png" />
+<p>If we wait 10-15 secs and we refresh pressing the command button the customer record appears:</p>
+<img src="customerAppearsInGrid.png" />
+<p>What we have replicated here is what is called a stale index state in RavenDB, it seems that when the first record is created in 
+    a RavenDB instance for the first time, the index takes a long time to be updated and the query does not return the just created record. It is worth noting that the refresh is 
+    done in a request invoked after the request for the save action, in this case, the save action is not responsible of returning the list of customers.</p>
+<p>If you close the application and restart it once more, you see this issue does not happen again, even if an address instance is created 
+    for the first time. You may want to have a look at the
+<a href="http://ravendb.net/docs/client-api/querying/stale-indexes">official documentation</a> regarding this 'feature'. We will discuss in the Test section how we can avoid this sort of situation.</p>
+<h2>Other Aspects</h2>
+<p>There is one additional change required in the Domain entities, we need to tag the customer and address with the JsonObject attribute so NewtonSoft library can serialize our objects. There is also a change in our Linq queries where the 'Equals' must be replace by '=='; the RavenDB Linq struggles if the 'Equals' 
+    method is used.</p>
+<h2>Testing with RavenDB</h2>
+<p>If we want to use RavenDB when running our tests, there is a key aspect that we need to consider:</p>
+<ul>
+    <li>Tear down the database between test executions</li>
+</ul>
+<h3>InMemory</h3>
+<p>But before we discuss how to tear down the document store, there is an interesting feature worth of mentioning: RavenDb can be configured to run in-memory, 
+    hence performance is improved without losing any behavior/functionality. As a result, I modified the <code>TransManagerFactoryRavenDB</code> so the tests can be run in memory:</p>
+<pre lang="cs">
+    public class TransManagerFactoryRavenDB
+        : ITransFactory
+    {
+		...
+01      private bool IsSetForTesting { get; set; }
+
+        private IDocumentStore InitialiseDocumentStore()
+        {
+            var store =
+                IsSetForTesting
+02                  ? new EmbeddableDocumentStore
+                          {
+                              RunInMemory = true
+                          }
+                    : new EmbeddableDocumentStore {DataDirectory = "eDirectory"};
+
+            store.Initialize();
+            return store;
+        }
+		...
+    }
+</pre>
+<p>Line 01: A new flag can be set to indicate that an InMemory instance must be created</p>
+<p>Line 02: If the flag is set then the RavenDB instance is created in memory</p>
+<p>The Spring configuration file for the tests sets the <code>IsSetForTesting</code> property so the tests use an InMemory RavenDB instance. You may want to look at the <code>TestRavenDBConfiguration</code> file located at the test project.</p>
+<h3>Tear Down</h3>
+<p>I took the idea of using an index from <a href="http://vpetroff.blogspot.ie/2012/04/deleting-all-documents-in-ravendb.html">Vladimir Petrov's blog</a>, 
+    then entity instances that are created during the tests can be deleted using a customized index. RavenDB indexes are created in code by inheriting from the <code>AbstractIndexCreationTask</code> class:</p>
+<pre lang="cs">
+    public class AllDocumentsById : AbstractIndexCreationTask
+    {
+        public const string Name = "AllDocumentsById";
+
+        #region Overrides of AbstractIndexCreationTask
+
+        /// <summary>
+        /// Creates the index definition.
+        /// </summary>
+        public override IndexDefinition CreateIndexDefinition()
+        {
+            return new IndexDefinition
+            {
+01              Name = AllDocumentsById.Name,
+02              Map = "from doc in docs let DocId = doc[\"@metadata\"][\"@id\"] select new {DocId};"                
+            };            
+        }
+
+        #endregion
+    }
+</pre>
+<p>Line 01: We give the index a well known name, we'll need it when we have to delete the entities.</p>
+<p>Line 02: Declares the index mapping so it creates an entry for any doc created in the store.</p>
+<p>In order to create the index, the tests have some extra functionality to determine if the <code>RepositoryLocator</code> implements the <code>IStoreInitialiser</code> 
+    interface, if so, it invokes the <code>ConfigureStore</code> method. The <code>RepositoryLocatorRavenDB</code> does so:</p>
+<pre lang="cs">
+    public class RepositoryLocatorRavenDB
+01      : RepositoryLocatorBase, IResetable, IStoreInitialiser
+
+    {
+        ...
+
+        #region Implementation of IStoreInitialiser
+
+        public void ConfigureStore()
+        {
+            var documentStore = _sessionInstance.Advanced.DocumentStore as EmbeddableDocumentStore;
+            if (documentStore == null) return;
+02          IndexCreation.CreateIndexes(typeof(AllDocumentsById).Assembly, documentStore);
+        }
+
+        #endregion
+    }
+</pre>
+<p>So how do the tests use the index?. Well, it happens that the <code>RepositoryLocatorRavenDB</code> also implements the <code>IResetable</code> interface:</p>
+<pre lang="cs">
+    public class RepositoryLocatorRavenDB
+        : RepositoryLocatorBase, IResetable, IStoreInitialiser
+
+    {
+        ...
+
+        #region Implementation of IResetable
+
+        public void Reset()
+        {
+            var documentStore = _sessionInstance.Advanced.DocumentStore as EmbeddableDocumentStore;
+            if (documentStore == null) return;
+01          while (documentStore.DatabaseCommands.GetStatistics().StaleIndexes.Length != 0)
+            {
+                Thread.Sleep(10);
+            }
+02          _sessionInstance.Advanced.DatabaseCommands.DeleteByIndex(AllDocumentsById.Name, new IndexQuery());
+        }
+
+        #endregion
+
+        ...
+    }
+</pre>
+<p>Line 01: I will explain in a second.</p>
+<p>Line 02: It uses the <code>DeleteByIndex</code> passing the name of our customized index.</p>
+<p>There is a problem with the above index, because the tear down happens to be invoked with a different session to the one that the test uses. When the test 
+    execution only creates one entity instance, the <code>AllDocumentsById</code> 
+    index is stale. If more than one instance is created it seems that the issue is resolved. As a result, line 01 is used to ensure that the index is not stale when the deletion method is invoked.</p>
+<h3>Set Configuration to Use RavenDB</h3>
+<p>In order to use the RavenDB implementation when running the tests, ensure that the App.config is configured so the <code>SpringConfigFile</code> appSetting is set to <code>TestRavenDBConfiguration.xml</code>:</p>
+<h2>Conclusion</h2>
+<p>It has been very easy to adapt RavenDB to the eDirectory solution, in fact, it just took a couple hours to get it working, getting the tests working took a little more as a result of the stale index issue. Not having to create a mapping between the domain entities and the document store is a great gain.</p>
+<p>If best design practices are followed when designing the domain for a RavenDB store, you need to move away from the traditional relational approach, documents should store as much information as possible; what does it mean? in a nutshell, in domain terms, your documents become aggregates. That also mean that we move away from storing references in entities, we store instead the document Id and any property of other documents. It is a radical change in the way of thinking if you have been doing something like NHibernate.</p>
+<h2>Other Resource Links</h2>
+<ul>
+    <li><a href="http://ravendb.net/">RavenDB home page</a></li>
+    <li><a href="http://www.codeproject.com/Articles/74322/RavenDB-An-Introduction">RavenDB - An Introduction (CodeProject Article)</a></li>
+    <li><a href="https://groups.google.com/forum/?fromgroups#!forum/ravendb">RavenDB Google Group</a></li>
+    <li><a href="http://www.slideshare.net/alorob/intro-to-ravendb">Intro to RavenDB by Alonso Robles</a></li>
+</ul>
+</span>
+<!-- End Article -->
+
+
+
+
+</div> 
+</body>
+</html>
+
