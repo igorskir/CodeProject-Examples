@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Expenses Year="2009" Month="March">
+
+   <ExpenseGroup Name="HB" Date="1">
+      <ExpenseItem Date="1" Name="Rent" Recipient="Land Lord" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="1000" Remarks="" />
+      <ExpenseItem Date="1" Name="Milk" Recipient="Land Lord" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="500" Remarks="" />
+   </ExpenseGroup>
+   <Seperator />
+   <ExpenseItem Date="1" Name="Birthday Party" Recipient="Vendor" Purchaser="Tom Ryan" Category="Entertainment" PurchaseMode="Cash" Amount="300" Remarks="500" />
+   <ExpenseItem Date="1" Name="Fruits (31 Jan)" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="120" Remarks="" />
+   <ExpenseItem Date="1" Name="Something" Recipient="Vendor" Purchaser="Martha" Category="" PurchaseMode="Card" Amount="23" Remarks="" />
+   <ExpenseItem Date="1" Name="Newspaper" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="14" Remarks="" />
+   <ExpenseItem Date="1" Name="Vegetables" Recipient="Supermarket" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="75" Remarks="" />
+   <ExpenseItem Date="1" Name="Groceries" Recipient="Supermarket" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="189" Remarks="" />
+   <ExpenseItem Date="1" Name="Cherrys" Recipient="Supermarket" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="12" Remarks="" />
+   <ExpenseItem Date="1" Name="Noodles" Recipient="Supermarket" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="68" Remarks="" />
+   <ExpenseItem Date="1" Name="Bread" Recipient="Supermarket" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="" Remarks="" />
+   <ExpenseItem Date="1" Name="Home ? Doctor" Recipient="Taxi" Purchaser="Tom Ryan" Category="Travel"  PurchaseMode="Cash" Amount="90" Remarks="" />
+   <ExpenseItem Date="1" Name="Fruits" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="120" Remarks="" />
+   <ExpenseItem Date="1" Name="Plates, Hangers etc" Recipient="Departmental Store" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="148" Remarks="" />
+   <ExpenseItem Date="1" Name="Stitching" Recipient="Desginer" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="100" Remarks="" />
+   <ExpenseItem Date="1" Name="Home -> Airport" Recipient="Taxi" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="12" Remarks="" Seperator=""/>
+   <!--<ExpenseItem Date="" Name="" Recipient="" Purchaser="" Category="" PurchaseMode="" Amount="" Remarks="" />-->
+   <Seperator />
+   <ExpenseGroup Name="Shopping">
+      <ExpenseItem Date="2" Name="Lunch" Recipient="Diner" Purchaser="Tom Ryan" Category="Travel"  PurchaseMode="Cash" Amount="29" Remarks="" />
+      <ExpenseItem Date="2" Name="Cinema -> Home" Recipient="Taxi" Purchaser="Tom Ryan" Category="Travel"  PurchaseMode="Cash" Amount="100" Remarks="" />
+      <ExpenseItem Date="2" Name="Office -> Cinema" Recipient="Taxi" Purchaser="Martha" Category="Travel"  PurchaseMode="Cash" Amount="70" Remarks="" />
+      <ExpenseItem Date="2" Name="Sandwich, Cake, Tea" Recipient="Vendor" Purchaser="Tom Ryan" Category="Food &amp; Groceries" PurchaseMode="Cash" Amount="14" Remarks="" />
+      <ExpenseItem Date="2" Name="Donut" Recipient="Cinema Cinemas" Purchaser="Tom Ryan" Category="Food &amp; Groceries" PurchaseMode="Cash" Amount="30" Remarks="" />
+   </ExpenseGroup>
+   <Seperator />
+   <ExpenseItem Date="2" Name="Lunch" Recipient="Diner" Purchaser="Tom Ryan" Category="Travel"  PurchaseMode="Cash" Amount="29" Remarks="" />
+   <ExpenseItem Date="2" Name="Home ? Cinema" Recipient="Taxi" Purchaser="Tom Ryan" Category="Travel"  PurchaseMode="Cash" Amount="100" Remarks="" />
+   <ExpenseItem Date="2" Name="Station ? Cinema" Recipient="Taxi" Purchaser="Martha" Category="Travel"  PurchaseMode="Cash" Amount="70" Remarks="" />
+   <ExpenseItem Date="2" Name="Sandwich, Cake, Tea" Recipient="Vendor" Purchaser="Tom Ryan" Category="Food &amp; Groceries" PurchaseMode="Cash" Amount="14" Remarks="" />
+   <ExpenseItem Date="2" Name="Donut" Recipient="Cinemas" Purchaser="Tom Ryan" Category="Food &amp; Groceries" PurchaseMode="Cash" Amount="30" Remarks="" />
+   <ExpenseItem Date="2" Name="Snacks &amp; Coffee" Recipient="Cinema" Purchaser="Tom Ryan" Category="Entertainment" PurchaseMode="Cash" Amount="110" Remarks="" />
+   <ExpenseItem Date="2" Name="Tickets" Recipient="Taxi" Purchaser="Tom Ryan" Category="Commutation" PurchaseMode="Cash" Amount="15" Remarks="" />
+   <ExpenseItem Date="2" Name="Dinner, Bread" Recipient="Bakery" Purchaser="Tom Ryan" Category="Restaurant" PurchaseMode="Cash" Amount="67" Remarks="" />
+   <!--<ExpenseItem Date="" Name="" Recipient="" Purchaser="" Category="" PurchaseMode="" Amount="" Remarks="" />-->
+   <Seperator />
+   <ExpenseItem Date="3" Name="Ghee" Recipient="Berkeley" Purchaser="Martha" Category="Food &amp; Groceries" PurchaseMode="Cash" Amount="50" Remarks="" />
+   <ExpenseItem Date="3" Name="Cake Mix" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="12" Remarks="" />
+   <ExpenseItem Date="3" Name="Skipping Rope" Recipient="City Sports" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="30" Remarks="" />
+   <ExpenseItem Date="3" Name="Post Dinner Snacks" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="10" Remarks="" />
+   <ExpenseItem Date="3" Name="Olive Oil" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="20" Remarks="" />
+   <!--<ExpenseItem Date="" Name="" Recipient="" Purchaser="" Category="" PurchaseMode="" Amount="" Remarks="" />-->
+   <Seperator />
+   <ExpenseItem Date="4" Name="Petrol" Recipient="Gas Station" Purchaser="Tom Ryan" Category="Petrol" PurchaseMode="Cash" Amount="50" Remarks="" />
+   <ExpenseItem Date="4" Name="Snacks" Recipient="Bakery" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="60" Remarks="" />
+   <ExpenseItem Date="4" Name="Decoration Items" Recipient="Fancy Store" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="75" Remarks="" />
+   <ExpenseItem Date="4" Name="Dry cleaning" Recipient="Laundry Market" Purchaser="Martha" Category="" PurchaseMode="Cash" Amount="290" Remarks="" />
+   <ExpenseItem Date="4" Name="Photo Prints" Recipient="Vista Print" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="10" Remarks="" />
+   <!--<ExpenseItem Date="" Name="" Recipient="" Purchaser="" Category="" PurchaseMode="" Amount="" Remarks="" />-->
+   <Seperator />
+   <ExpenseItem Date="5" Name="Water" Recipient="Vendor" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="50" Remarks="" />
+   <ExpenseItem Date="5" Name="Cello Tape" Recipient="Supermarket" Purchaser="Tom Ryan" Category="" PurchaseMode="Cash" Amount="6" Remarks="" />
+</Expenses>

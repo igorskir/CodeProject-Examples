@@ -1,0 +1,13 @@
+﻿<UserControl x:Class="MVVMExample.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:MVVMExample">
+    <Grid x:Name="LayoutRoot" Background="White">
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <local:ListView/>
+        <local:DetailView Grid.Row="1"/>
+    </Grid>
+</UserControl>

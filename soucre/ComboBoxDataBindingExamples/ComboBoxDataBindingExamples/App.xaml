@@ -1,0 +1,17 @@
+﻿<Application x:Class="ComboBoxDataBindingExamples.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:local="clr-namespace:ComboBoxDataBindingExamples" 
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!-- Set up the collections that will be used to bind the ItemsSource 
+        properties to display the list of items in the dropdown lists.
+        -->
+        <x:Array x:Key="ColorListString" Type="local:ComboBoxItemString">
+            <local:ComboBoxItemString ValueString = "Red"/>
+            <local:ComboBoxItemString ValueString = "Green"/>
+            <local:ComboBoxItemString ValueString = "Blue"/>
+        </x:Array>
+    </Application.Resources>
+</Application>
