@@ -8,7 +8,7 @@
   >
 
   <!-- This is the XAML used by the "Manually Bind Data" and "Bind In Code" blocks of code. -->
-  <StackPanel>
+  <!--<StackPanel>
     <TextBox 
       x:Name="firstNameTextBox" 
       Width="200" 
@@ -26,7 +26,7 @@
       Background="LightBlue" 
       Margin="0,4" 
       />
-  </StackPanel>
+  </StackPanel>-->
 
 
   <!-- This is the verbose XAML used with the "Bind In XAML" code block -->
@@ -69,8 +69,8 @@
   </StackPanel>-->
 
 
-  <!-- This is the second, more compact XAML used with the "Bind In XAML" code block -->
-  <!--<StackPanel>
+   <!--This is the second, more compact XAML used with the "Bind In XAML" code block--> 
+  <StackPanel>
     <TextBox 
       x:Name="firstNameTextBox" 
       Text="{Binding Path=FirstName, UpdateSourceTrigger=PropertyChanged}"
@@ -91,5 +91,5 @@
       Background="LightBlue" 
       Margin="0,4" 
       />
-    </StackPanel>-->
+    </StackPanel>
 </Window>

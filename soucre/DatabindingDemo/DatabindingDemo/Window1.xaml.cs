@@ -26,11 +26,11 @@ namespace DatabindingDemo
             // Only one of the following method
             // calls should be uncommented at a time.
 
-            this.ManuallyMoveData();
+            //this.ManuallyMoveData();
 
             //this.BindInCode();
 
-            //this.BindInXaml();
+            this.BindInXaml();
         }
 
         #region ManuallyMoveData
@@ -102,7 +102,7 @@ namespace DatabindingDemo
 
         private void BindInXaml()
         {
-            base.DataContext = new Person
+            DataContext = new Person
             {
                 FirstName = "Josh",
                 LastName = "Smith"
