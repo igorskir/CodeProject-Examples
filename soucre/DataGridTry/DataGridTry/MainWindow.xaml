@@ -1,0 +1,13 @@
+﻿<Window x:Class="DataGridTry.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:bh="clr-namespace:DataGridTry"
+        Title="MainWindow" Height="350" Width="525" 
+        DataContext="{Binding Main, Source={StaticResource Locator}}">
+    <Grid>
+        <DataGrid AutoGenerateColumns="False" ColumnWidth="*"
+                  SelectionMode="Extended" SelectionUnit="FullRow"
+                  ItemsSource="{Binding Path=ResourceSatellites}"
+                  bh:DataGridColumnBehavior.BindableColumns="{Binding Path=ColumnCollection}" />
+    </Grid>
+</Window>

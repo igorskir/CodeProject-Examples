@@ -1,0 +1,34 @@
+﻿<Application x:Class="DataGridTemplateSample.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:local="clr-namespace:DataGridTemplateSample"
+    StartupUri="Window1.xaml">
+	<Application.Resources>
+		<ContextMenu x:Key="textBoxMenu">
+			<MenuItem Command="ApplicationCommands.Cut">
+				<MenuItem.Icon>
+					<Image Source="Resources\cut.png"/>
+				</MenuItem.Icon>
+			</MenuItem>
+			<MenuItem Command="ApplicationCommands.Copy">
+				<MenuItem.Icon>
+					<Image Source="Resources\copy.png"/>
+				</MenuItem.Icon>
+			</MenuItem>
+			<MenuItem Command="ApplicationCommands.Paste">
+				<MenuItem.Icon>
+					<Image Source="Resources\paste.png"/>
+				</MenuItem.Icon>
+			</MenuItem>
+		</ContextMenu>
+
+		<Style x:Key="TextColumnEditStyle" TargetType="TextBox">
+			<Style.Resources>
+				<ResourceDictionary/>
+			</Style.Resources>
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="ContextMenu" Value="{StaticResource textBoxMenu}" />
+		</Style>
+	</Application.Resources>
+</Application>
