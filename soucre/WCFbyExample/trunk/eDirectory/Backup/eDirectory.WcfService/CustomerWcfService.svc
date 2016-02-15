@@ -1,5 +1,0 @@
-﻿<%@ ServiceHost Language="C#" 
-                Debug="true" 
-                Service="eDirectory.WcfService.CustomerWcfService" 
-                CodeBehind="CustomerWcfService.svc.cs" 
-                Factory="eDirectory.WcfService.ServiceFactory" %>
